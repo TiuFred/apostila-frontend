@@ -590,8 +590,8 @@ function SavedModal({ open, onClose, materials, onDelete, subjects }) {
 // ── App ────────────────────────────────────────────────────────────────────────
 export default function App() {
   const [subjects,       setSubjects]       = useLocalStorage("subjects",[
-    {id:1,name:"Cálculo II",color:"#7C6AF7",items:[]},
-    {id:2,name:"Física",    color:"#22C9A0",items:[]},
+    {id:1,name:"Programação",color:"#7C6AF7",items:[]},
+    {id:2,name:"Negócios",    color:"#22C9A0",items:[]},
   ]);
   const [savedMaterials, setSavedMaterials] = useLocalStorage("savedMaterials",[]);
   const [activeId,       setActiveId]       = useState(null);
