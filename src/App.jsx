@@ -584,10 +584,9 @@ export default function App() {
     const {data:existing}=await supabase.from("subjects").select("name");
     const existingNames=(existing||[]).map(s=>s.name);
     // Insert any missing fixed subjects
-    const toInsert=FIXED_SUBJECTS.filter(s=>!existingNames.includes(s.name));
-    if(toInsert.length>0){
-      await supabase.from("subjects").insert(toInsert.map(s=>({...s,created_by:user.id})));
-    }
+    if(existingNames.length===0){
+  await supabase.from("subjects").insert(FIXED_SUBJECTS.map(s=>({...s,created_by:user.id})));
+}
     await loadAll();
   };
 
