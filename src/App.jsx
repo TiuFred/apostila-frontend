@@ -103,71 +103,70 @@ function Field({ label, required, children }) {
 const inputStyle = {width:"100%",padding:"9px 12px",borderRadius:8,border:"0.5px solid rgba(255,255,255,0.12)",background:"rgba(255,255,255,0.06)",color:"#e8e6ff",fontSize:13.5,boxSizing:"border-box",fontFamily:"'DM Sans',sans-serif"};
 
 function AddItemModal({ open, onClose, onAdd }) {
-  const [title, setTitle]       = useState("");
-  const [url, setUrl]           = useState("");
-  const [desc, setDesc]         = useState("");
-  const [week, setWeek]         = useState("");
-  const [date, setDate]         = useState("");
-  const [type, setType]         = useState("artigo");
-  const [scraping, setScraping] = useState(false);
-  const [preview, setPreview]   = useState(null);
-  const [pdfFile, setPdfFile]   = useState(null);
+  const [title, setTitle]           = useState("");
+  const [url, setUrl]               = useState("");
+  const [desc, setDesc]             = useState("");
+  const [week, setWeek]             = useState("");
+  const [date, setDate]             = useState("");
+  const [type, setType]             = useState("artigo");
+  const [scraping, setScraping]     = useState(false);
+  const [pdfFile, setPdfFile]       = useState(null);
   const [pdfLoading, setPdfLoading] = useState(false);
-  const [inputMode, setInputMode]   = useState("link"); // "link" | "pdf"
+  const [linkOk, setLinkOk]         = useState(null); // null | true | false
+  const [pdfOk, setPdfOk]           = useState(null);
+  const [scrapedContent, setScrapedContent] = useState("");
   const fileRef = useRef(null);
 
   const reset = () => {
     setTitle(""); setUrl(""); setDesc(""); setWeek(""); setDate("");
-    setType("artigo"); setPreview(null); setPdfFile(null); setInputMode("link");
+    setType("artigo"); setPdfFile(null); setLinkOk(null); setPdfOk(null); setScrapedContent("");
   };
 
   const scrape = async () => {
     if (!url.trim()) return;
-    setScraping(true); setPreview(null);
+    setScraping(true); setLinkOk(null);
     try {
-      const r = await fetch(`${API}/scrape`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url})});
+      const r = await fetch(`${API}/scrape`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({url}) });
       const d = await r.json();
       if (d.title && !title) setTitle(d.title.slice(0,80));
       if (d.description && !desc) setDesc(d.description.slice(0,200));
-      setPreview(d);
-    } catch { setPreview({error:true}); }
+      setScrapedContent(d.content || "");
+      setLinkOk(true);
+    } catch { setLinkOk(false); }
     setScraping(false);
   };
+
+  const openFilePicker = () => fileRef.current?.click();
 
   const handlePdf = async (file) => {
     if (!file || file.type !== "application/pdf") return;
     setPdfFile(file);
     if (!title) setTitle(file.name.replace(/\.pdf$/i,"").slice(0,80));
-    setPdfLoading(true);
+    setPdfLoading(true); setPdfOk(null);
     try {
-      // Read as base64 in the browser — no FormData needed
-      const b64 = await new Promise((resolve, reject) => {
+      const b64 = await new Promise((res, rej) => {
         const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(",")[1]);
-        reader.onerror = reject;
+        reader.onload = () => res(reader.result.split(",")[1]);
+        reader.onerror = rej;
         reader.readAsDataURL(file);
       });
       const r = await fetch(`${API}/extract-pdf-b64`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({ data: b64 })
       });
       const d = await r.json();
       if (d.content) {
-        setPreview({ content: d.content, length: d.content.length });
-        if (!desc && d.content) setDesc(d.content.slice(0,200));
-      }
-    } catch { setPreview({error:true}); }
+        setScrapedContent(d.content);
+        if (!desc) setDesc(d.content.slice(0,200));
+        setPdfOk(true);
+      } else { setPdfOk(false); }
+    } catch { setPdfOk(false); }
     setPdfLoading(false);
   };
 
   const submit = () => {
     if (!title.trim()) return;
-    onAdd({
-      id: Date.now(), title: title.trim(), url: url.trim(), desc: desc.trim(),
-      week, date, type, scraped_content: preview?.content || "",
-      has_pdf: !!pdfFile, pdf_name: pdfFile?.name || ""
-    });
+    onAdd({ id:Date.now(), title:title.trim(), url:url.trim(), desc:desc.trim(), week, date, type, scraped_content:scrapedContent });
     reset(); onClose();
   };
 
@@ -181,60 +180,61 @@ function AddItemModal({ open, onClose, onAdd }) {
       <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Ex: Séries de Taylor — Khan Academy" autoFocus style={inputStyle} />
     </Field>
 
-    {/* Mode toggle */}
-    <div style={{display:"flex",gap:0,marginBottom:14,borderRadius:8,overflow:"hidden",border:"0.5px solid rgba(255,255,255,0.12)"}}>
-      {[["link","🔗 Link / URL"],["pdf","📄 Upload PDF"]].map(([mode,label])=>(
-        <button key={mode} onClick={()=>setInputMode(mode)} style={{
-          flex:1,padding:"8px 0",border:"none",fontSize:12,fontWeight:600,cursor:"pointer",transition:"all 0.15s",
-          background:inputMode===mode?"#7C6AF7":"rgba(255,255,255,0.04)",
-          color:inputMode===mode?"#fff":"rgba(255,255,255,0.45)",
-        }}>{label}</button>
-      ))}
-    </div>
+    {/* Link OR PDF — side by side */}
+    <div style={{marginBottom:14}}>
+      <div style={{fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.4)",marginBottom:8,letterSpacing:"0.04em",textTransform:"uppercase"}}>
+        Conteúdo <span style={{color:"rgba(255,255,255,0.2)",fontWeight:400}}>— insira um link OU anexe um PDF</span>
+      </div>
 
-    {/* Link mode */}
-    {inputMode==="link" && <Field label="Link do autoestudo">
-      <div style={{display:"flex",gap:8}}>
-        <input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://..." onKeyDown={e=>e.key==="Enter"&&scrape()} style={{...inputStyle,flex:1}} />
-        <button onClick={scrape} disabled={!url.trim()||scraping}
-          style={{padding:"0 14px",borderRadius:8,border:"none",background:!url.trim()||scraping?"rgba(34,201,160,0.25)":"#22C9A0",color:"#fff",fontSize:12,fontWeight:700,cursor:!url.trim()||scraping?"default":"pointer",whiteSpace:"nowrap",flexShrink:0}}>
-          {scraping?<Spinner size={13} color="#fff"/>:"📡 Ler"}
+      {/* Link row */}
+      <div style={{display:"flex",gap:8,marginBottom:8}}>
+        <input value={url} onChange={e=>{setUrl(e.target.value);setLinkOk(null);}}
+          placeholder="Cole o link aqui (https://...)"
+          onKeyDown={e=>e.key==="Enter"&&scrape()}
+          style={{...inputStyle,flex:1,marginBottom:0}} />
+        <button onClick={scrape} disabled={!url.trim()||scraping} style={{
+          padding:"0 16px",borderRadius:8,border:"none",whiteSpace:"nowrap",flexShrink:0,
+          background:!url.trim()||scraping?"rgba(34,201,160,0.2)":"#22C9A0",
+          color:"#fff",fontSize:12,fontWeight:700,cursor:!url.trim()||scraping?"default":"pointer"
+        }}>
+          {scraping ? <Spinner size={13} color="#fff"/> : "📡 Ler link"}
         </button>
       </div>
-      {preview && !preview.error && <div style={{marginTop:8,background:"rgba(34,201,160,0.08)",border:"0.5px solid rgba(34,201,160,0.25)",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#22C9A0"}}>
-        ✓ Conteúdo extraído — {preview.content?.length||0} caracteres lidos
-      </div>}
-      {preview?.error && <div style={{marginTop:6,fontSize:11,color:"#F76A6A"}}>Não foi possível ler o link. Adicione mesmo assim.</div>}
-    </Field>}
+      {linkOk===true && <div style={{fontSize:11,color:"#22C9A0",marginBottom:6}}>✓ Link lido — {scrapedContent.length} caracteres extraídos</div>}
+      {linkOk===false && <div style={{fontSize:11,color:"#F76A6A",marginBottom:6}}>Não foi possível ler o link. Tente outro ou use o PDF.</div>}
 
-    {/* PDF mode */}
-    {inputMode==="pdf" && <Field label="Arquivo PDF">
+      {/* Divider */}
+      <div style={{display:"flex",alignItems:"center",gap:10,margin:"10px 0"}}>
+        <div style={{flex:1,height:"0.5px",background:"rgba(255,255,255,0.1)"}} />
+        <span style={{fontSize:11,color:"rgba(255,255,255,0.25)",fontWeight:600}}>OU</span>
+        <div style={{flex:1,height:"0.5px",background:"rgba(255,255,255,0.1)"}} />
+      </div>
+
+      {/* PDF button */}
       <input ref={fileRef} type="file" accept="application/pdf" style={{display:"none"}}
         onChange={e=>e.target.files[0]&&handlePdf(e.target.files[0])} />
-      <div
-        onClick={()=>fileRef.current?.click()}
-        onDragOver={e=>e.preventDefault()}
-        onDrop={e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f)handlePdf(f);}}
-        style={{
-          border:`1.5px dashed ${pdfFile?"rgba(124,106,247,0.6)":"rgba(255,255,255,0.15)"}`,
-          borderRadius:10,padding:"24px 16px",textAlign:"center",cursor:"pointer",
-          background:pdfFile?"rgba(124,106,247,0.08)":"rgba(255,255,255,0.03)",
-          transition:"all 0.2s"
+
+      {!pdfFile ? (
+        <button onClick={openFilePicker} style={{
+          width:"100%",padding:"11px 0",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:13,
+          border:"0.5px dashed rgba(124,106,247,0.4)",background:"rgba(124,106,247,0.07)",color:"#c4bbff"
         }}>
-        {pdfLoading && <><Spinner size={20} color="#7C6AF7"/><div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginTop:8}}>Extraindo texto do PDF...</div></>}
-        {!pdfLoading && !pdfFile && <>
-          <div style={{fontSize:28,marginBottom:8}}>📄</div>
-          <div style={{fontSize:13,color:"rgba(255,255,255,0.5)",marginBottom:4}}>Clique ou arraste o PDF aqui</div>
-          <div style={{fontSize:11,color:"rgba(255,255,255,0.25)"}}>O texto será extraído automaticamente</div>
-        </>}
-        {!pdfLoading && pdfFile && <>
-          <div style={{fontSize:24,marginBottom:6}}>✅</div>
-          <div style={{fontSize:13,fontWeight:600,color:"#c4bbff",marginBottom:3}}>{pdfFile.name}</div>
-          <div style={{fontSize:11,color:"rgba(255,255,255,0.35)"}}>{preview?.content ? `${preview.content.length} caracteres extraídos` : "clique para trocar o arquivo"}</div>
-        </>}
-      </div>
-      {preview?.error && <div style={{marginTop:6,fontSize:11,color:"#F76A6A"}}>Não foi possível extrair o texto. Adicione uma descrição manual.</div>}
-    </Field>}
+          📄 Anexar PDF
+        </button>
+      ) : (
+        <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:8,background:"rgba(124,106,247,0.1)",border:"0.5px solid rgba(124,106,247,0.3)"}}>
+          {pdfLoading ? <Spinner size={16} color="#7C6AF7"/> : <span style={{fontSize:18}}>📑</span>}
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:13,fontWeight:600,color:"#c4bbff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{pdfFile.name}</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.35)"}}>
+              {pdfLoading ? "Extraindo texto..." : pdfOk===true ? `✓ ${scrapedContent.length} caracteres extraídos` : pdfOk===false ? "Erro ao extrair — adicione descrição manual" : ""}
+            </div>
+          </div>
+          <button onClick={openFilePicker} style={{background:"none",border:"none",fontSize:11,color:"rgba(255,255,255,0.35)",cursor:"pointer"}}>trocar</button>
+          <button onClick={()=>{setPdfFile(null);setPdfOk(null);setScrapedContent("");}} style={{background:"none",border:"none",fontSize:14,color:"rgba(247,106,106,0.5)",cursor:"pointer"}}>✕</button>
+        </div>
+      )}
+    </div>
 
     <Field label="Descrição">
       <textarea value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Resumo ou observações (opcional — preenchido automaticamente)" rows={3}
