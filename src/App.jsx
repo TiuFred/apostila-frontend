@@ -1,14 +1,23 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API      = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const SUPA_URL = "https://gtjcdznwsrvbkxgeuvdd.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd0amNkem53c3J2Ymt4Z2V1dmRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5NTU5ODcsImV4cCI6MjA5MjUzMTk4N30.IGBSgdUMmOw9_hCcirfK3-Z0p6EliWxACnPP5Dk3uvc";
 const supabase = createClient(SUPA_URL, SUPA_KEY);
 
-const COLORS = ["#7C6AF7","#22C9A0","#F76A6A","#F7A83E","#4FB8F7","#D46AF7","#6AF7A8","#F7D46A"];
-const WEEKS  = Array.from({length:10},(_,i)=>`Semana ${String(i+1).padStart(2,"0")}`);
-const MODES  = [
+// ── Matérias fixas ─────────────────────────────────────────────────────────────
+const FIXED_SUBJECTS = [
+  { name:"Programação", color:"#7C6AF7" },
+  { name:"UX",          color:"#F76A6A" },
+  { name:"Orientação",  color:"#22C9A0" },
+  { name:"Liderança",   color:"#F7A83E" },
+  { name:"Negócios",    color:"#4FB8F7" },
+  { name:"Matemática",  color:"#D46AF7" },
+];
+
+const WEEKS = Array.from({length:10},(_,i)=>`Semana ${String(i+1).padStart(2,"0")}`);
+const MODES = [
   {id:"apostila",    label:"Apostila Completa",    icon:"📋", desc:"Resumo organizado e didático"},
   {id:"mapa",        label:"Mapa Mental",           icon:"🗺️", desc:"Estrutura visual de conceitos"},
   {id:"objetiva",    label:"Simulado Objetiva",     icon:"🎯", desc:"12 questões de múltipla escolha"},
@@ -25,7 +34,12 @@ const MONTH_NAMES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julh
 
 function typeIcon(t) { return {artigo:"📄",vídeo:"🎥",livro:"📘",aula:"🎓",anotação:"📝",pdf:"📑"}[t]||"📎"; }
 
-// ── base components ───────────────────────────────────────────────────────────
+function nameFromEmail(email, meta) {
+  if (meta?.name) return meta.name;
+  return email?.split("@")[0] || "Usuário";
+}
+
+// ── base components ────────────────────────────────────────────────────────────
 function Overlay({ onClick }) { return <div onClick={onClick} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:900}}/>; }
 
 function Modal({ open, onClose, children, wide }) {
@@ -57,116 +71,73 @@ function Label({ text, required }) {
 
 const IS = {width:"100%",padding:"9px 12px",borderRadius:8,border:"0.5px solid rgba(255,255,255,0.12)",background:"rgba(255,255,255,0.06)",color:"#e8e6ff",fontSize:13.5,boxSizing:"border-box",fontFamily:"'DM Sans',sans-serif"};
 
-// ── Auth Screen ───────────────────────────────────────────────────────────────
-function AuthScreen({ onAuth }) {
-  const [mode,    setMode]    = useState("login");
-  const [email,   setEmail]   = useState("");
-  const [pass,    setPass]    = useState("");
-  const [name,    setName]    = useState("");
-  const [loading, setLoading] = useState(false);
-  const [err,     setErr]     = useState("");
-  const [msg,     setMsg]     = useState("");
+// ── Confirm Dialog ─────────────────────────────────────────────────────────────
+function ConfirmModal({ open, onClose, onConfirm, title, message, danger }) {
+  return <Modal open={open} onClose={onClose}>
+    <h3 style={{margin:"0 0 10px",fontSize:16,fontWeight:700,color:danger?"#F76A6A":"#e8e6ff"}}>{title}</h3>
+    <p style={{fontSize:13.5,color:"rgba(255,255,255,0.55)",lineHeight:1.6,marginBottom:24}}>{message}</p>
+    <div style={{display:"flex",gap:8}}>
+      <Btn onClick={onClose} outline color="rgba(255,255,255,0.25)" full>Cancelar</Btn>
+      <Btn onClick={()=>{onConfirm();onClose();}} color={danger?"#F76A6A":"#7C6AF7"} full>{danger?"Sim, deletar":"Confirmar"}</Btn>
+    </div>
+  </Modal>;
+}
 
-  const submit = async () => {
-    if (!email.trim() || !pass.trim()) return;
-    setLoading(true); setErr(""); setMsg("");
+// ── Auth Screen ────────────────────────────────────────────────────────────────
+function AuthScreen({ onAuth }) {
+  const [mode,setMode]=useState("login"); const [email,setEmail]=useState(""); const [pass,setPass]=useState(""); const [name,setName]=useState("");
+  const [loading,setLoading]=useState(false); const [err,setErr]=useState(""); const [msg,setMsg]=useState("");
+
+  const submit=async()=>{
+    if(!email.trim()||!pass.trim()) return;
+    setLoading(true);setErr("");setMsg("");
     try {
-      if (mode === "login") {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
-        if (error) throw error;
+      if(mode==="login"){
+        const {data,error}=await supabase.auth.signInWithPassword({email,password:pass});
+        if(error) throw error;
         onAuth(data.user);
       } else {
-        const { data, error } = await supabase.auth.signUp({
-          email, password: pass,
-          options: { data: { name: name.trim() || email.split("@")[0] } }
-        });
-        if (error) throw error;
-        if (data.user && !data.session) {
-          setMsg("Verifique seu e-mail para confirmar o cadastro!");
-        } else if (data.user) {
-          onAuth(data.user);
-        }
+        const {data,error}=await supabase.auth.signUp({email,password:pass,options:{data:{name:name.trim()||email.split("@")[0]}}});
+        if(error) throw error;
+        if(data.user&&!data.session) setMsg("Verifique seu e-mail para confirmar o cadastro!");
+        else if(data.user) onAuth(data.user);
       }
-    } catch(e) {
-      const msgs = {
-        "Invalid login credentials": "E-mail ou senha incorretos.",
-        "User already registered": "Esse e-mail já está cadastrado. Faça login.",
-        "Password should be at least 6 characters": "A senha precisa ter pelo menos 6 caracteres.",
-        "Unable to validate email address: invalid format": "E-mail inválido.",
-      };
-      setErr(msgs[e.message] || e.message);
+    } catch(e){
+      const msgs={"Invalid login credentials":"E-mail ou senha incorretos.","User already registered":"E-mail já cadastrado. Faça login.","Password should be at least 6 characters":"A senha precisa ter pelo menos 6 caracteres."};
+      setErr(msgs[e.message]||e.message);
     }
     setLoading(false);
   };
 
-  return (
-    <div style={{display:"flex",height:"100vh",background:"#0e0e1a",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans',sans-serif"}}>
-      <div style={{width:400,padding:36,background:"#16162a",borderRadius:20,border:"0.5px solid rgba(255,255,255,0.08)"}}>
-        {/* Logo */}
-        <div style={{textAlign:"center",marginBottom:28}}>
-          <div style={{fontFamily:"'Space Grotesk',sans-serif",fontWeight:700,fontSize:26,letterSpacing:-0.5,marginBottom:6}}>
-            <span style={{color:"#7C6AF7"}}>Apostila</span><span style={{color:"rgba(255,255,255,0.85)"}}>.ai</span>
-          </div>
-          <div style={{fontSize:13,color:"rgba(255,255,255,0.35)"}}>Repositório compartilhado da turma</div>
+  return <div style={{display:"flex",height:"100vh",background:"#0e0e1a",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans',sans-serif"}}>
+    <div style={{width:400,padding:36,background:"#16162a",borderRadius:20,border:"0.5px solid rgba(255,255,255,0.08)"}}>
+      <div style={{textAlign:"center",marginBottom:28}}>
+        <div style={{fontFamily:"'Space Grotesk',sans-serif",fontWeight:700,fontSize:26,letterSpacing:-0.5,marginBottom:6}}>
+          <span style={{color:"#7C6AF7"}}>Apostila</span><span style={{color:"rgba(255,255,255,0.85)"}}>.ai</span>
         </div>
-
-        {/* Toggle */}
-        <div style={{display:"flex",background:"rgba(255,255,255,0.04)",borderRadius:10,padding:3,marginBottom:24,border:"0.5px solid rgba(255,255,255,0.08)"}}>
-          {["login","signup"].map(m=>(
-            <button key={m} onClick={()=>{setMode(m);setErr("");setMsg("");}} style={{flex:1,padding:"8px 0",borderRadius:8,border:"none",fontSize:13,fontWeight:600,cursor:"pointer",background:mode===m?"#7C6AF7":"transparent",color:mode===m?"#fff":"rgba(255,255,255,0.4)",transition:"all 0.2s"}}>
-              {m==="login"?"Entrar":"Criar conta"}
-            </button>
-          ))}
-        </div>
-
-        {mode==="signup"&&(
-          <div style={{marginBottom:14}}>
-            <Label text="Seu nome"/>
-            <input value={name} onChange={e=>setName(e.target.value)} placeholder="Ex: João Silva" style={IS}/>
-          </div>
-        )}
-
-        <div style={{marginBottom:14}}>
-          <Label text="E-mail"/>
-          <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="seu@email.com" type="email"
-            onKeyDown={e=>e.key==="Enter"&&submit()} style={IS}/>
-        </div>
-        <div style={{marginBottom:20}}>
-          <Label text="Senha"/>
-          <input value={pass} onChange={e=>setPass(e.target.value)} placeholder="••••••••" type="password"
-            onKeyDown={e=>e.key==="Enter"&&submit()} style={IS}/>
-          {mode==="signup"&&<div style={{fontSize:11,color:"rgba(255,255,255,0.25)",marginTop:5}}>Mínimo 6 caracteres</div>}
-        </div>
-
-        {err&&<div style={{fontSize:12,color:"#F76A6A",marginBottom:14,padding:"8px 12px",background:"rgba(247,106,106,0.1)",borderRadius:8}}>{err}</div>}
-        {msg&&<div style={{fontSize:12,color:"#22C9A0",marginBottom:14,padding:"8px 12px",background:"rgba(34,201,160,0.1)",borderRadius:8}}>{msg}</div>}
-
-        <Btn onClick={submit} disabled={loading||!email.trim()||!pass.trim()} full>
-          {loading?<><Spinner size={14} color="#fff"/> Aguarde...</>:mode==="login"?"Entrar →":"Criar conta →"}
-        </Btn>
-
-        <div style={{marginTop:20,padding:"14px",background:"rgba(124,106,247,0.08)",borderRadius:10,border:"0.5px solid rgba(124,106,247,0.2)"}}>
-          <div style={{fontSize:11,color:"rgba(124,106,247,0.8)",fontWeight:600,marginBottom:4}}>💡 Repositório compartilhado</div>
-          <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",lineHeight:1.6}}>Todos com conta neste app compartilham as mesmas matérias, autoestudos e calendário. Qualquer um pode adicionar conteúdo para a turma.</div>
-        </div>
+        <div style={{fontSize:13,color:"rgba(255,255,255,0.35)"}}>Repositório compartilhado da turma</div>
+      </div>
+      <div style={{display:"flex",background:"rgba(255,255,255,0.04)",borderRadius:10,padding:3,marginBottom:24,border:"0.5px solid rgba(255,255,255,0.08)"}}>
+        {["login","signup"].map(m=><button key={m} onClick={()=>{setMode(m);setErr("");setMsg("");}} style={{flex:1,padding:"8px 0",borderRadius:8,border:"none",fontSize:13,fontWeight:600,cursor:"pointer",background:mode===m?"#7C6AF7":"transparent",color:mode===m?"#fff":"rgba(255,255,255,0.4)",transition:"all 0.2s"}}>
+          {m==="login"?"Entrar":"Criar conta"}
+        </button>)}
+      </div>
+      {mode==="signup"&&<div style={{marginBottom:14}}><Label text="Seu nome"/><input value={name} onChange={e=>setName(e.target.value)} placeholder="Ex: João Silva" style={IS}/></div>}
+      <div style={{marginBottom:14}}><Label text="E-mail"/><input value={email} onChange={e=>setEmail(e.target.value)} placeholder="seu@email.com" type="email" onKeyDown={e=>e.key==="Enter"&&submit()} style={IS}/></div>
+      <div style={{marginBottom:20}}><Label text="Senha"/><input value={pass} onChange={e=>setPass(e.target.value)} placeholder="••••••••" type="password" onKeyDown={e=>e.key==="Enter"&&submit()} style={IS}/>
+        {mode==="signup"&&<div style={{fontSize:11,color:"rgba(255,255,255,0.25)",marginTop:5}}>Mínimo 6 caracteres</div>}
+      </div>
+      {err&&<div style={{fontSize:12,color:"#F76A6A",marginBottom:14,padding:"8px 12px",background:"rgba(247,106,106,0.1)",borderRadius:8}}>{err}</div>}
+      {msg&&<div style={{fontSize:12,color:"#22C9A0",marginBottom:14,padding:"8px 12px",background:"rgba(34,201,160,0.1)",borderRadius:8}}>{msg}</div>}
+      <Btn onClick={submit} disabled={loading||!email.trim()||!pass.trim()} full>
+        {loading?<><Spinner size={14} color="#fff"/> Aguarde...</>:mode==="login"?"Entrar →":"Criar conta →"}
+      </Btn>
+      <div style={{marginTop:20,padding:"14px",background:"rgba(124,106,247,0.08)",borderRadius:10,border:"0.5px solid rgba(124,106,247,0.2)"}}>
+        <div style={{fontSize:11,color:"rgba(124,106,247,0.8)",fontWeight:600,marginBottom:4}}>💡 Repositório compartilhado</div>
+        <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",lineHeight:1.6}}>Todos com conta neste app compartilham as mesmas matérias, autoestudos e calendário.</div>
       </div>
     </div>
-  );
-}
-
-// ── AddSubjectModal ────────────────────────────────────────────────────────────
-function AddSubjectModal({ open, onClose, onAdd }) {
-  const [name,setName]=useState(""); const [color,setColor]=useState(COLORS[0]);
-  const submit=()=>{if(name.trim()){onAdd(name.trim(),color);setName("");onClose();}};
-  return <Modal open={open} onClose={onClose}>
-    <h3 style={{margin:"0 0 16px",fontSize:16,fontWeight:700}}>Nova matéria</h3>
-    <input value={name} onChange={e=>setName(e.target.value)} placeholder="Ex: Algoritmos, Física..." autoFocus onKeyDown={e=>e.key==="Enter"&&submit()} style={{...IS,marginBottom:14}}/>
-    <div style={{marginBottom:18}}>
-      <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginBottom:8}}>Cor da matéria</div>
-      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{COLORS.map(c=><div key={c} onClick={()=>setColor(c)} style={{width:28,height:28,borderRadius:"50%",background:c,cursor:"pointer",border:color===c?"3px solid #fff":"3px solid transparent",transition:"border 0.15s"}}/>)}</div>
-    </div>
-    <Btn onClick={submit} color={color} full>Criar matéria</Btn>
-  </Modal>;
+  </div>;
 }
 
 // ── AddItemModal ───────────────────────────────────────────────────────────────
@@ -179,9 +150,9 @@ function AddItemModal({ open, onClose, onAdd, subjects }) {
   const [pdfOk,setPdfOk]=useState(null); const [content,setContent]=useState("");
   const fileRef=useRef(null);
 
-  useEffect(()=>{ if(open&&subjects.length>0) setSubjectId(subjects[0].id); },[open]);
+  useEffect(()=>{ if(open&&subjects.length>0) setSubjectId(s=>s||subjects[0].id); },[open,subjects]);
 
-  const reset=()=>{ setTitle("");setUrl("");setDescricao("");setWeek("");setDate("");setType("artigo");setPdfFile(null);setLinkOk(null);setPdfOk(null);setContent(""); };
+  const reset=()=>{setTitle("");setUrl("");setDescricao("");setWeek("");setDate("");setType("artigo");setPdfFile(null);setLinkOk(null);setPdfOk(null);setContent("");};
 
   const scrape=async()=>{
     if(!url.trim()) return;
@@ -197,14 +168,13 @@ function AddItemModal({ open, onClose, onAdd, subjects }) {
   };
 
   const pickPdf=()=>fileRef.current?.click();
-
   const handlePdf=async(file)=>{
     if(!file||file.type!=="application/pdf") return;
     setPdfFile(file);
     if(!title) setTitle(file.name.replace(/\.pdf$/i,"").slice(0,80));
     setPdfBusy(true);setPdfOk(null);
     try {
-      const b64=await new Promise((res,rej)=>{ const rd=new FileReader();rd.onload=()=>res(rd.result.split(",")[1]);rd.onerror=rej;rd.readAsDataURL(file); });
+      const b64=await new Promise((res,rej)=>{const rd=new FileReader();rd.onload=()=>res(rd.result.split(",")[1]);rd.onerror=rej;rd.readAsDataURL(file);});
       const r=await fetch(`${API}/extract-pdf-b64`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({data:b64})});
       const d=await r.json();
       if(d.content){setContent(d.content);if(!descricao)setDescricao(d.content.slice(0,200));setPdfOk(true);}else setPdfOk(false);
@@ -223,16 +193,13 @@ function AddItemModal({ open, onClose, onAdd, subjects }) {
       <h3 style={{margin:0,fontSize:16,fontWeight:700}}>Adicionar autoestudo</h3>
       <button onClick={()=>{reset();onClose();}} style={{background:"none",border:"none",color:"rgba(255,255,255,0.3)",cursor:"pointer",fontSize:18}}>✕</button>
     </div>
-
     <div style={{marginBottom:14}}>
       <Label text="Matéria" required/>
       <select value={subjectId} onChange={e=>setSubjectId(e.target.value)} style={{...IS,cursor:"pointer",appearance:"none",backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='rgba(255,255,255,0.4)' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`,backgroundRepeat:"no-repeat",backgroundPosition:"right 12px center",paddingRight:32}}>
         {subjects.map(s=><option key={s.id} value={s.id} style={{background:"#1a1a2e"}}>{s.name}</option>)}
       </select>
     </div>
-
     <div style={{marginBottom:14}}><Label text="Nome da atividade" required/><input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Ex: Séries de Taylor — Khan Academy" autoFocus style={IS}/></div>
-
     <div style={{marginBottom:14}}>
       <Label text="Conteúdo"/>
       <div style={{display:"flex",gap:8,marginBottom:6}}>
@@ -263,7 +230,6 @@ function AddItemModal({ open, onClose, onAdd, subjects }) {
         </div>
       )}
     </div>
-
     <div style={{marginBottom:14}}><Label text="Descrição"/><textarea value={descricao} onChange={e=>setDescricao(e.target.value)} placeholder="Resumo ou observações (preenchido automaticamente)" rows={3} style={{...IS,resize:"vertical",lineHeight:1.6}}/></div>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
       <div><Label text="Semana"/>
@@ -277,9 +243,7 @@ function AddItemModal({ open, onClose, onAdd, subjects }) {
     <div style={{marginBottom:18}}>
       <Label text="Tipo"/>
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-        {["artigo","vídeo","livro","aula","anotação","pdf"].map(t=>(
-          <button key={t} onClick={()=>setType(t)} style={{padding:"5px 12px",borderRadius:20,fontSize:12,cursor:"pointer",border:`0.5px solid ${type===t?"rgba(124,106,247,0.5)":"rgba(255,255,255,0.12)"}`,background:type===t?"rgba(124,106,247,0.2)":"transparent",color:type===t?"#c4bbff":"rgba(255,255,255,0.5)",fontWeight:type===t?600:400}}>{type===t?"✓ ":""}{t}</button>
-        ))}
+        {["artigo","vídeo","livro","aula","anotação","pdf"].map(t=><button key={t} onClick={()=>setType(t)} style={{padding:"5px 12px",borderRadius:20,fontSize:12,cursor:"pointer",border:`0.5px solid ${type===t?"rgba(124,106,247,0.5)":"rgba(255,255,255,0.12)"}`,background:type===t?"rgba(124,106,247,0.2)":"transparent",color:type===t?"#c4bbff":"rgba(255,255,255,0.5)",fontWeight:type===t?600:400}}>{type===t?"✓ ":""}{t}</button>)}
       </div>
     </div>
     <div style={{display:"flex",gap:8}}>
@@ -294,16 +258,12 @@ function GenerateModal({ open, onClose, subject, items, onSave }) {
   const [mode,setMode]=useState("apostila"); const [filterWeek,setFilterWeek]=useState("todas");
   const [selected,setSelected]=useState([]); const [phase,setPhase]=useState("config");
   const [result,setResult]=useState(null); const [pdfLoading,setPdfLoading]=useState(false); const [err,setErr]=useState("");
-
   const availableWeeks=["todas",...Array.from(new Set(items.map(i=>i.week).filter(Boolean))).sort()];
   const filteredItems=filterWeek==="todas"?items:items.filter(i=>i.week===filterWeek);
-
   useEffect(()=>{ if(open){setSelected(items.map(i=>i.id));setResult(null);setPhase("config");setErr("");setFilterWeek("todas");} },[open]);
   useEffect(()=>{ setSelected(filteredItems.map(i=>i.id)); },[filterWeek]);
-
   const toggle=id=>setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
   const selItems=items.filter(i=>selected.includes(i.id));
-
   const generate=async()=>{
     if(!selItems.length) return;
     setPhase("generating");setErr("");
@@ -313,7 +273,6 @@ function GenerateModal({ open, onClose, subject, items, onSave }) {
       const d=await r.json(); setResult(d);setPhase("done");
     } catch(e){setErr("Erro ao gerar: "+e.message);setPhase("config");}
   };
-
   const downloadPDF=async()=>{
     if(!result) return; setPdfLoading(true);
     try {
@@ -324,12 +283,7 @@ function GenerateModal({ open, onClose, subject, items, onSave }) {
     } catch(e){alert("Erro ao gerar PDF: "+e.message);}
     setPdfLoading(false);
   };
-
-  const save=()=>{
-    if(!result) return;
-    onSave({mode:result.mode,title:`${MODES.find(m=>m.id===result.mode)?.label} — ${subject.name}`,data:result.data});
-    onClose();
-  };
+  const save=()=>{ if(!result) return; onSave({mode:result.mode,title:`${MODES.find(m=>m.id===result.mode)?.label} — ${subject.name}`,data:result.data}); onClose(); };
 
   return <Modal open={open} onClose={onClose} wide={phase==="done"}>
     {phase==="config"&&<>
@@ -361,7 +315,6 @@ function GenerateModal({ open, onClose, subject, items, onSave }) {
           <span style={{fontSize:13,color:"rgba(255,255,255,0.8)",flex:1}}>{item.title}</span>
           {item.week&&<Tag color="#F7A83E">{item.week}</Tag>}
           {item.scraped_content&&<span style={{fontSize:10,color:"#22C9A0"}}>📡</span>}
-          <span style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>{item.type}</span>
         </div>)}
       </div>
       {err&&<div style={{color:"#F76A6A",fontSize:12,marginBottom:10}}>{err}</div>}
@@ -390,7 +343,7 @@ function GenerateModal({ open, onClose, subject, items, onSave }) {
 }
 
 function ResultPreview({ mode, data, color }) {
-  if (mode==="apostila") return <div style={{fontSize:12.5,lineHeight:1.7,color:"rgba(255,255,255,0.8)"}}>
+  if(mode==="apostila") return <div style={{fontSize:12.5,lineHeight:1.7,color:"rgba(255,255,255,0.8)"}}>
     <div style={{fontWeight:700,fontSize:15,color:"#fff",marginBottom:8}}>{data.titulo}</div>
     <p style={{marginBottom:10,color:"rgba(255,255,255,0.6)"}}>{data.introducao}</p>
     {data.secoes?.map((s,i)=><div key={i} style={{marginBottom:12}}>
@@ -403,7 +356,7 @@ function ResultPreview({ mode, data, color }) {
       <p style={{color:"rgba(255,255,255,0.5)",fontSize:12}}>{data.resumo}</p>
     </div>
   </div>;
-  if (mode==="mapa") return <div>
+  if(mode==="mapa") return <div>
     <div style={{fontWeight:700,fontSize:15,color:"#fff",marginBottom:12,textAlign:"center"}}>{data.centro}</div>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
       {data.ramos?.map((r,i)=>{ let rc=color; try{rc=r.cor||color;}catch{}
@@ -417,10 +370,10 @@ function ResultPreview({ mode, data, color }) {
       })}
     </div>
   </div>;
-  if (mode==="objetiva") return <div>
+  if(mode==="objetiva") return <div>
     <div style={{fontWeight:700,fontSize:14,color:"#fff",marginBottom:4}}>{data.titulo}</div>
     <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginBottom:12}}>Questões primeiro — gabarito ao final</div>
-    {data.questoes?.slice(0,3).map((q,i)=><div key={i} style={{marginBottom:10,padding:10,background:"rgba(255,255,255,0.04)",borderRadius:8,border:"0.5px solid rgba(255,255,255,0.08)"}}>
+    {data.questoes?.slice(0,3).map((q,i)=><div key={i} style={{marginBottom:10,padding:10,background:"rgba(255,255,255,0.04)",borderRadius:8}}>
       <div style={{fontWeight:600,color,fontSize:12,marginBottom:4}}>Q{q.numero}</div>
       <div style={{fontSize:12,color:"rgba(255,255,255,0.8)"}}>{q.enunciado}</div>
     </div>)}
@@ -430,7 +383,7 @@ function ResultPreview({ mode, data, color }) {
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{data.questoes?.map((q,i)=><span key={i} style={{fontSize:11,padding:"2px 8px",borderRadius:6,background:color+"22",color}}>{q.numero}. {q.resposta?.toUpperCase()}</span>)}</div>
     </div>
   </div>;
-  if (mode==="dissertativa") return <div>
+  if(mode==="dissertativa") return <div>
     <div style={{fontWeight:700,fontSize:14,color:"#fff",marginBottom:4}}>{data.titulo}</div>
     <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginBottom:12}}>Questões primeiro — gabarito ao final</div>
     {data.questoes?.map((q,i)=><div key={i} style={{marginBottom:10,padding:10,background:"rgba(255,255,255,0.04)",borderRadius:8}}>
@@ -445,18 +398,12 @@ function ResultPreview({ mode, data, color }) {
       </div>)}
     </div>
   </div>;
-  if (mode==="flashcards") return <div>
+  if(mode==="flashcards") return <div>
     <div style={{fontWeight:700,fontSize:14,color:"#fff",marginBottom:12}}>{data.titulo}</div>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
       {data.cards?.slice(0,6).map((c,i)=><div key={i} style={{borderRadius:8,overflow:"hidden",border:`0.5px solid ${color}33`}}>
-        <div style={{background:color+"25",padding:"8px 10px",borderBottom:`0.5px solid ${color}22`}}>
-          <div style={{fontSize:10,color,marginBottom:2,fontWeight:600}}>FRENTE</div>
-          <div style={{fontSize:11,color:"rgba(255,255,255,0.85)"}}>{c.frente}</div>
-        </div>
-        <div style={{padding:"8px 10px",background:"rgba(255,255,255,0.03)"}}>
-          <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginBottom:2}}>VERSO</div>
-          <div style={{fontSize:11,color:"rgba(255,255,255,0.65)"}}>{c.verso?.slice(0,70)}{c.verso?.length>70?"...":""}</div>
-        </div>
+        <div style={{background:color+"25",padding:"8px 10px",borderBottom:`0.5px solid ${color}22`}}><div style={{fontSize:10,color,marginBottom:2,fontWeight:600}}>FRENTE</div><div style={{fontSize:11,color:"rgba(255,255,255,0.85)"}}>{c.frente}</div></div>
+        <div style={{padding:"8px 10px",background:"rgba(255,255,255,0.03)"}}><div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginBottom:2}}>VERSO</div><div style={{fontSize:11,color:"rgba(255,255,255,0.65)"}}>{c.verso?.slice(0,70)}{c.verso?.length>70?"...":""}</div></div>
       </div>)}
     </div>
   </div>;
@@ -466,16 +413,17 @@ function ResultPreview({ mode, data, color }) {
 // ── SavedModal ─────────────────────────────────────────────────────────────────
 function SavedModal({ open, onClose, materials, onDelete, subjects }) {
   const [pdfLoading,setPdfLoading]=useState(null);
+  const [confirm,setConfirm]=useState(null);
   const dlPDF=async(mat,subject)=>{
     setPdfLoading(mat.id);
     try {
       const r=await fetch(`${API}/pdf`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:mat.mode,subject:subject?.name||"",subject_color:subject?.color||"#7C6AF7",data:mat.data})});
       const blob=await r.blob(); const url=URL.createObjectURL(blob);
-      const a=document.createElement("a");a.href=url;a.download=`${mat.title.replace(/\s+/g,"_")}.pdf`;a.click();
+      const a=document.createElement("a");a.href=url;a.download=`${mat.title?.replace(/\s+/g,"_")}.pdf`;a.click();
     } catch(e){alert("Erro: "+e.message);}
     setPdfLoading(null);
   };
-  return <Modal open={open} onClose={onClose} wide>
+  return <><Modal open={open} onClose={onClose} wide>
     <h3 style={{margin:"0 0 16px",fontSize:16,fontWeight:700}}>💾 Materiais salvos</h3>
     {materials.length===0&&<div style={{fontSize:14,color:"rgba(255,255,255,0.3)",textAlign:"center",padding:"30px 0"}}>Nenhum material salvo ainda.</div>}
     <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -487,11 +435,13 @@ function SavedModal({ open, onClose, materials, onDelete, subjects }) {
             <div style={{fontSize:11,color:"rgba(255,255,255,0.3)"}}>{mat.created_at?new Date(mat.created_at).toLocaleDateString("pt-BR"):""} • {modeInfo?.label}</div>
           </div>
           <Btn onClick={()=>dlPDF(mat,subject)} disabled={pdfLoading===mat.id} color={subject?.color||"#7C6AF7"} small>{pdfLoading===mat.id?<Spinner size={12} color="#fff"/>:"⬇ PDF"}</Btn>
-          <button onClick={()=>onDelete(mat.id)} style={{background:"none",border:"none",color:"rgba(255,100,100,0.5)",cursor:"pointer",fontSize:14}}>✕</button>
+          <button onClick={()=>setConfirm(mat.id)} style={{background:"none",border:"none",color:"rgba(255,100,100,0.5)",cursor:"pointer",fontSize:14}}>✕</button>
         </div>;
       })}
     </div>
-  </Modal>;
+  </Modal>
+  <ConfirmModal open={!!confirm} onClose={()=>setConfirm(null)} onConfirm={()=>onDelete(confirm)} title="Deletar material?" message="Tem certeza que quer remover este material salvo? Esta ação não pode ser desfeita." danger/>
+  </>;
 }
 
 // ── Calendar ───────────────────────────────────────────────────────────────────
@@ -512,12 +462,12 @@ function AddEventModal({ open, onClose, onAdd, defaultDate }) {
         {EVENT_TYPES.map(e=><button key={e.id} onClick={()=>setType(e.id)} style={{padding:"6px 12px",borderRadius:20,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:5,border:`0.5px solid ${type===e.id?e.color:"rgba(255,255,255,0.12)"}`,background:type===e.id?e.color+"22":"transparent",color:type===e.id?e.color:"rgba(255,255,255,0.5)",fontWeight:type===e.id?600:400}}><span>{e.icon}</span>{e.label}</button>)}
       </div>
     </div>
-    <div style={{marginBottom:14}}><Label text="Título" required/><input value={title} onChange={e=>setTitle(e.target.value)} autoFocus placeholder="Ex: Prova de Cálculo II" style={IS}/></div>
+    <div style={{marginBottom:14}}><Label text="Título" required/><input value={title} onChange={e=>setTitle(e.target.value)} autoFocus placeholder="Ex: Prova de UX" style={IS}/></div>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
       <div><Label text="Data" required/><input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{...IS,colorScheme:"dark"}}/></div>
       <div><Label text="Horário"/><input type="time" value={time} onChange={e=>setTime(e.target.value)} style={{...IS,colorScheme:"dark"}}/></div>
     </div>
-    <div style={{marginBottom:18}}><Label text="Matéria relacionada"/><input value={subject} onChange={e=>setSubject(e.target.value)} placeholder="Ex: Cálculo II (opcional)" style={IS}/></div>
+    <div style={{marginBottom:18}}><Label text="Matéria relacionada"/><input value={subject} onChange={e=>setSubject(e.target.value)} placeholder="Ex: Programação (opcional)" style={IS}/></div>
     <div style={{display:"flex",gap:8}}>
       <Btn onClick={onClose} outline color="rgba(255,255,255,0.25)" full>Cancelar</Btn>
       <Btn onClick={submit} disabled={!title.trim()||!date} color={et?.color||"#7C6AF7"} full>Adicionar evento</Btn>
@@ -529,6 +479,7 @@ function CalendarPage({ events, onAddEvent, onDeleteEvent }) {
   const today=new Date();
   const [curYear,setCurYear]=useState(today.getFullYear()); const [curMonth,setCurMonth]=useState(today.getMonth());
   const [addModal,setAddModal]=useState(false); const [clickedDate,setClickedDate]=useState("");
+  const [confirm,setConfirm]=useState(null);
   const prevMonth=()=>{ if(curMonth===0){setCurMonth(11);setCurYear(y=>y-1);}else setCurMonth(m=>m-1); };
   const nextMonth=()=>{ if(curMonth===11){setCurMonth(0);setCurYear(y=>y+1);}else setCurMonth(m=>m+1); };
   const firstDay=new Date(curYear,curMonth,1).getDay(); const daysInMonth=new Date(curYear,curMonth+1,0).getDate();
@@ -537,7 +488,7 @@ function CalendarPage({ events, onAddEvent, onDeleteEvent }) {
   const eventsOnDay=day=>{ if(!day) return []; const ds=`${curYear}-${String(curMonth+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`; return events.filter(e=>e.date===ds); };
   const isToday=day=>day&&today.getDate()===day&&today.getMonth()===curMonth&&today.getFullYear()===curYear;
   const upcoming=[...events].filter(e=>new Date(e.date+"T00:00:00")>=new Date(today.toDateString())).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,8);
-  return <div style={{display:"flex",flex:1,overflow:"hidden"}}>
+  return <><div style={{display:"flex",flex:1,overflow:"hidden"}}>
     <div style={{flex:1,overflowY:"auto",padding:24}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
         <h2 style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:20,fontWeight:600}}>{MONTH_NAMES[curMonth]} {curYear}</h2>
@@ -575,10 +526,11 @@ function CalendarPage({ events, onAddEvent, onDeleteEvent }) {
       {upcoming.length===0&&<div style={{fontSize:12,color:"rgba(255,255,255,0.2)",textAlign:"center",padding:"20px 0"}}>Nenhum evento futuro</div>}
       {upcoming.map(ev=>{ const et=EVENT_TYPES.find(e=>e.id===ev.type); const d=new Date(ev.date+"T00:00:00"); const daysLeft=Math.ceil((d-new Date(today.toDateString()))/(1000*60*60*24));
         return <div key={ev.id} style={{marginBottom:8,padding:"10px 12px",borderRadius:8,background:"rgba(255,255,255,0.04)",border:`0.5px solid ${et?.color}33`,position:"relative"}}>
-          <button onClick={()=>onDeleteEvent(ev.id)} style={{position:"absolute",top:6,right:6,background:"none",border:"none",color:"rgba(255,255,255,0.15)",cursor:"pointer",fontSize:11,lineHeight:1}} onMouseEnter={e=>e.currentTarget.style.color="rgba(247,106,106,0.6)"} onMouseLeave={e=>e.currentTarget.style.color="rgba(255,255,255,0.15)"}>✕</button>
+          <button onClick={()=>setConfirm(ev.id)} style={{position:"absolute",top:6,right:6,background:"none",border:"none",color:"rgba(255,255,255,0.15)",cursor:"pointer",fontSize:11,lineHeight:1}} onMouseEnter={e=>e.currentTarget.style.color="rgba(247,106,106,0.6)"} onMouseLeave={e=>e.currentTarget.style.color="rgba(255,255,255,0.15)"}>✕</button>
           <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}><span style={{fontSize:14}}>{et?.icon}</span><span style={{fontSize:11,color:et?.color,fontWeight:600}}>{et?.label}</span></div>
           <div style={{fontSize:12,fontWeight:500,color:"rgba(255,255,255,0.85)",marginBottom:3,paddingRight:16}}>{ev.title}</div>
           {ev.subject&&<div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginBottom:3}}>{ev.subject}</div>}
+          {ev.created_by_name&&<div style={{fontSize:10,color:"rgba(255,255,255,0.25)",marginBottom:3}}>por {ev.created_by_name}</div>}
           <div style={{fontSize:10,color:"rgba(255,255,255,0.4)"}}>
             {d.toLocaleDateString("pt-BR",{day:"2-digit",month:"short"})}{ev.time&&` · ${ev.time}`}
             <span style={{marginLeft:6,padding:"1px 6px",borderRadius:10,fontSize:9,fontWeight:700,background:daysLeft===0?"rgba(247,106,106,0.2)":daysLeft<=3?"rgba(247,168,62,0.2)":"rgba(34,201,160,0.1)",color:daysLeft===0?"#F76A6A":daysLeft<=3?"#F7A83E":"#22C9A0"}}>{daysLeft===0?"Hoje":`${daysLeft}d`}</span>
@@ -587,10 +539,12 @@ function CalendarPage({ events, onAddEvent, onDeleteEvent }) {
       })}
     </div>
     <AddEventModal open={addModal} onClose={()=>setAddModal(false)} onAdd={onAddEvent} defaultDate={clickedDate}/>
-  </div>;
+  </div>
+  <ConfirmModal open={!!confirm} onClose={()=>setConfirm(null)} onConfirm={()=>{ onDeleteEvent(confirm); setConfirm(null); }} title="Remover evento?" message="Tem certeza que quer remover este evento do calendário?" danger/>
+  </>;
 }
 
-// ── Main App ──────────────────────────────────────────────────────────────────
+// ── Main App ───────────────────────────────────────────────────────────────────
 export default function App() {
   const [user,           setUser]           = useState(null);
   const [authLoading,    setAuthLoading]    = useState(true);
@@ -600,57 +554,75 @@ export default function App() {
   const [savedMaterials, setSavedMaterials] = useState([]);
   const [activeId,       setActiveId]       = useState(null);
   const [page,           setPage]           = useState("subjects");
-  const [modals,         setModals]         = useState({addSubject:false,addItem:false,generate:false,saved:false});
+  const [modals,         setModals]         = useState({addItem:false,generate:false,saved:false});
   const [toast,          setToast]          = useState("");
   const [backendOk,      setBackendOk]      = useState(null);
   const [loading,        setLoading]        = useState(false);
+  const [search,         setSearch]         = useState("");
+  const [sortBy,         setSortBy]         = useState("date"); // "date" | "week" | "type" | "name"
+  const [confirmDel,     setConfirmDel]     = useState(null); // item id to confirm delete
 
   const modal=(k,v)=>setModals(m=>({...m,[k]:v}));
 
-  // Auth listener
+  // Auth
   useEffect(()=>{
     supabase.auth.getSession().then(({data:{session}})=>{ setUser(session?.user||null); setAuthLoading(false); });
-    const {data:{subscription}} = supabase.auth.onAuthStateChange((_,session)=>{ setUser(session?.user||null); });
-    return ()=>subscription.unsubscribe();
+    const {data:{subscription}}=supabase.auth.onAuthStateChange((_,session)=>{ setUser(session?.user||null); });
+    return()=>subscription.unsubscribe();
   },[]);
 
-  // Load data when logged in
+  // Seed fixed subjects if not yet in DB, then load all
   useEffect(()=>{
     if(!user) return;
-    loadAll();
+    seedAndLoad();
     fetch(`${API}/health`).then(r=>r.json()).then(()=>setBackendOk(true)).catch(()=>setBackendOk(false));
   },[user]);
 
-  const loadAll=async()=>{
+  const seedAndLoad=async()=>{
     setLoading(true);
+    // Check existing subjects
+    const {data:existing}=await supabase.from("subjects").select("name");
+    const existingNames=(existing||[]).map(s=>s.name);
+    // Insert any missing fixed subjects
+    const toInsert=FIXED_SUBJECTS.filter(s=>!existingNames.includes(s.name));
+    if(toInsert.length>0){
+      await supabase.from("subjects").insert(toInsert.map(s=>({...s,created_by:user.id})));
+    }
+    await loadAll();
+  };
+
+  const loadAll=async()=>{
     const [s,it,ev,sm]=await Promise.all([
       supabase.from("subjects").select("*").order("created_at"),
       supabase.from("items").select("*").order("created_at"),
       supabase.from("cal_events").select("*").order("date"),
       supabase.from("saved_materials").select("*").order("created_at",{ascending:false}),
     ]);
-    if(s.data) setSubjects(s.data);
+    if(s.data){ setSubjects(s.data); setActiveId(id=>id||s.data[0]?.id||null); }
     if(it.data) setItems(it.data);
     if(ev.data) setCalEvents(ev.data);
     if(sm.data) setSavedMaterials(sm.data);
     setLoading(false);
   };
 
-  const active = subjects.find(s=>s.id===activeId)||subjects[0];
-  const activeItems = items.filter(i=>i.subject_id===active?.id);
+  const active=subjects.find(s=>s.id===activeId)||subjects[0];
+  const userName=nameFromEmail(user?.email, user?.user_metadata);
 
-  const addSubject=async(name,color)=>{
-    const {data,error}=await supabase.from("subjects").insert({name,color,created_by:user.id}).select().single();
-    if(error){setToast("Erro ao criar matéria");return;}
-    setSubjects(s=>[...s,data]); setActiveId(data.id); setPage("subjects");
-    setToast(`Matéria "${name}" criada!`);
-  };
+  // Items for active subject, filtered + sorted
+  const rawItems=items.filter(i=>i.subject_id===active?.id);
+  const filteredItems=rawItems
+    .filter(i=>!search||i.title?.toLowerCase().includes(search.toLowerCase())||i.descricao?.toLowerCase().includes(search.toLowerCase()))
+    .sort((a,b)=>{
+      if(sortBy==="week") return (a.week||"").localeCompare(b.week||"");
+      if(sortBy==="type") return (a.type||"").localeCompare(b.type||"");
+      if(sortBy==="name") return (a.title||"").localeCompare(b.title||"");
+      return new Date(b.created_at||0)-new Date(a.created_at||0); // date desc
+    });
 
   const addItem=async(item)=>{
-    const {data,error}=await supabase.from("items").insert({...item,created_by:user.id}).select().single();
-    if(error){setToast("Erro ao adicionar autoestudo");return;}
-    setItems(it=>[...it,data]);
-    setToast(`"${item.title}" adicionado!`);
+    const {data,error}=await supabase.from("items").insert({...item,created_by:user.id,created_by_name:userName}).select().single();
+    if(error){setToast("Erro ao adicionar");return;}
+    setItems(it=>[...it,data]);setToast(`"${item.title}" adicionado!`);
   };
 
   const removeItem=async(id)=>{
@@ -658,41 +630,26 @@ export default function App() {
     setItems(it=>it.filter(i=>i.id!==id));
   };
 
-  const removeSubject=async(id)=>{
-    await supabase.from("subjects").delete().eq("id",id);
-    const rest=subjects.filter(s=>s.id!==id);
-    setSubjects(rest); setItems(it=>it.filter(i=>i.subject_id!==id));
-    if(activeId===id) setActiveId(rest[0]?.id||null);
-  };
-
   const saveMateria=async(mat)=>{
     const {data,error}=await supabase.from("saved_materials").insert({...mat,created_by:user.id}).select().single();
     if(error){setToast("Erro ao salvar");return;}
-    setSavedMaterials(m=>[data,...m]); setToast("Material salvo!");
+    setSavedMaterials(m=>[data,...m]);setToast("Material salvo!");
   };
 
   const addEvent=async(ev)=>{
-    const {data,error}=await supabase.from("cal_events").insert({...ev,created_by:user.id}).select().single();
+    const {data,error}=await supabase.from("cal_events").insert({...ev,created_by:user.id,created_by_name:userName}).select().single();
     if(error){setToast("Erro ao adicionar evento");return;}
-    setCalEvents(e=>[...e,data]); setToast(`"${ev.title}" adicionado ao calendário!`);
+    setCalEvents(e=>[...e,data]);setToast(`"${ev.title}" adicionado!`);
   };
 
-  const deleteEvent=async(id)=>{
-    await supabase.from("cal_events").delete().eq("id",id);
-    setCalEvents(e=>e.filter(ev=>ev.id!==id));
-  };
-
-  const deleteMaterial=async(id)=>{
-    await supabase.from("saved_materials").delete().eq("id",id);
-    setSavedMaterials(m=>m.filter(x=>x.id!==id));
-  };
-
-  const logout=async()=>{ await supabase.auth.signOut(); setUser(null); setSubjects([]); setItems([]); setCalEvents([]); setSavedMaterials([]); };
+  const deleteEvent=async(id)=>{ await supabase.from("cal_events").delete().eq("id",id); setCalEvents(e=>e.filter(ev=>ev.id!==id)); };
+  const deleteMaterial=async(id)=>{ await supabase.from("saved_materials").delete().eq("id",id); setSavedMaterials(m=>m.filter(x=>x.id!==id)); };
+  const logout=async()=>{ await supabase.auth.signOut(); setUser(null); };
 
   const todayStr=new Date().toISOString().slice(0,10);
   const upcomingCount=calEvents.filter(e=>e.date>=todayStr).length;
 
-  if(authLoading) return <div style={{display:"flex",height:"100vh",alignItems:"center",justifyContent:"center",background:"#0e0e1a",fontFamily:"'DM Sans',sans-serif",color:"rgba(255,255,255,0.4)",fontSize:14}}><Spinner size={32} color="#7C6AF7"/></div>;
+  if(authLoading) return <div style={{display:"flex",height:"100vh",alignItems:"center",justifyContent:"center",background:"#0e0e1a"}}><Spinner size={32} color="#7C6AF7"/></div>;
   if(!user) return <AuthScreen onAuth={setUser}/>;
 
   return <>
@@ -708,19 +665,21 @@ export default function App() {
     `}</style>
 
     <div style={{display:"flex",height:"100vh",background:"#0e0e1a"}}>
-      {/* Sidebar */}
+
+      {/* ── Sidebar ── */}
       <div style={{width:224,background:"#111122",borderRight:"0.5px solid rgba(255,255,255,0.07)",display:"flex",flexDirection:"column",flexShrink:0}}>
-        <div style={{padding:"18px 16px 12px"}}>
+        <div style={{padding:"18px 16px 10px"}}>
           <div style={{fontFamily:"'Space Grotesk',sans-serif",fontWeight:700,fontSize:19,letterSpacing:-0.5}}>
             <span style={{color:"#7C6AF7"}}>Apostila</span><span style={{color:"rgba(255,255,255,0.85)"}}>.ai</span>
           </div>
-          <div style={{fontSize:10,color:"rgba(255,255,255,0.2)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.email}</div>
+          <div style={{fontSize:10,color:"rgba(255,255,255,0.25)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>👤 {userName}</div>
         </div>
 
         {backendOk===false&&<div style={{margin:"0 10px 8px",padding:"6px 10px",background:"rgba(247,106,106,0.15)",border:"0.5px solid rgba(247,106,106,0.3)",borderRadius:8,fontSize:11,color:"#F76A6A"}}>⚠ Backend offline</div>}
         {backendOk===true&&<div style={{margin:"0 10px 8px",padding:"4px 10px",background:"rgba(34,201,160,0.1)",borderRadius:8,fontSize:11,color:"#22C9A0"}}>● Online</div>}
 
-        <div style={{padding:"0 8px 8px"}}>
+        {/* Nav */}
+        <div style={{padding:"0 8px 6px"}}>
           {[{id:"subjects",label:"📚 Matérias"},{id:"calendar",label:"📅 Calendário",badge:upcomingCount}].map(nav=>(
             <button key={nav.id} onClick={()=>setPage(nav.id)} style={{width:"100%",padding:"8px 10px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",gap:8,background:page===nav.id?"rgba(255,255,255,0.07)":"transparent",border:"none",color:"rgba(255,255,255,0.75)",fontSize:13,fontWeight:page===nav.id?600:400,marginBottom:2,textAlign:"left"}}>
               <span style={{flex:1}}>{nav.label}</span>
@@ -729,73 +688,104 @@ export default function App() {
           ))}
         </div>
 
+        {/* Matérias list */}
         {page==="subjects"&&<div style={{padding:"0 8px",flex:1,overflowY:"auto"}}>
           <div style={{fontSize:10,color:"rgba(255,255,255,0.22)",padding:"4px 8px",textTransform:"uppercase",letterSpacing:"0.07em",fontWeight:600}}>Matérias</div>
           {loading&&<div style={{textAlign:"center",padding:"20px 0"}}><Spinner size={18} color="#7C6AF7"/></div>}
-          {subjects.map(s=><div key={s.id} onClick={()=>setActiveId(s.id)} style={{padding:"8px 10px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",gap:8,marginBottom:2,background:activeId===s.id||(!activeId&&s===subjects[0])?"rgba(255,255,255,0.07)":"transparent",transition:"background 0.12s"}}
-            onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.05)"}
-            onMouseLeave={e=>e.currentTarget.style.background=activeId===s.id?"rgba(255,255,255,0.07)":"transparent"}>
-            <div style={{width:8,height:8,borderRadius:"50%",background:s.color,flexShrink:0}}/>
-            <span style={{fontSize:13,color:"rgba(255,255,255,0.85)",flex:1,fontWeight:500}}>{s.name}</span>
-            <span style={{fontSize:11,color:"rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.05)",padding:"1px 6px",borderRadius:10}}>{items.filter(i=>i.subject_id===s.id).length}</span>
-          </div>)}
+          {subjects.map(s=>{
+            const count=items.filter(i=>i.subject_id===s.id).length;
+            return <div key={s.id} onClick={()=>{setActiveId(s.id);setSearch("");}} style={{padding:"8px 10px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",gap:8,marginBottom:2,background:activeId===s.id||(!activeId&&s===subjects[0])?"rgba(255,255,255,0.07)":"transparent",transition:"background 0.12s"}}
+              onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.05)"}
+              onMouseLeave={e=>e.currentTarget.style.background=activeId===s.id?"rgba(255,255,255,0.07)":"transparent"}>
+              <div style={{width:8,height:8,borderRadius:"50%",background:s.color,flexShrink:0}}/>
+              <span style={{fontSize:13,color:"rgba(255,255,255,0.85)",flex:1,fontWeight:500}}>{s.name}</span>
+              <span style={{fontSize:11,color:"rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.05)",padding:"1px 6px",borderRadius:10}}>{count}</span>
+            </div>;
+          })}
         </div>}
-
         {page==="calendar"&&<div style={{flex:1}}/>}
 
         <div style={{padding:"10px 10px 12px",borderTop:"0.5px solid rgba(255,255,255,0.06)",display:"flex",flexDirection:"column",gap:6}}>
-          {page==="subjects"&&<button onClick={()=>modal("addSubject",true)} style={{width:"100%",padding:"7px 0",borderRadius:8,border:"0.5px dashed rgba(255,255,255,0.14)",background:"transparent",color:"rgba(255,255,255,0.38)",fontSize:12,cursor:"pointer"}}>+ Nova matéria</button>}
           <button onClick={()=>modal("saved",true)} style={{width:"100%",padding:"7px 0",borderRadius:8,border:"0.5px solid rgba(255,255,255,0.08)",background:"rgba(255,255,255,0.03)",color:"rgba(255,255,255,0.45)",fontSize:12,cursor:"pointer"}}>💾 Materiais salvos ({savedMaterials.length})</button>
-          <button onClick={logout} style={{width:"100%",padding:"7px 0",borderRadius:8,border:"0.5px solid rgba(247,106,106,0.2)",background:"transparent",color:"rgba(247,106,106,0.5)",fontSize:12,cursor:"pointer"}}>Sair</button>
+          <button onClick={logout} style={{width:"100%",padding:"7px 0",borderRadius:8,border:"0.5px solid rgba(247,106,106,0.2)",background:"transparent",color:"rgba(247,106,106,0.5)",fontSize:12,cursor:"pointer"}}>Sair — {userName}</button>
         </div>
       </div>
 
-      {/* Main */}
+      {/* ── Main ── */}
       {page==="calendar"?(
         <CalendarPage events={calEvents} onAddEvent={addEvent} onDeleteEvent={deleteEvent}/>
       ):(
         <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+
+          {/* Topbar */}
           {active&&<div style={{padding:"14px 24px",borderBottom:"0.5px solid rgba(255,255,255,0.07)",display:"flex",alignItems:"center",gap:12,background:"rgba(255,255,255,0.01)",flexShrink:0}}>
             <div style={{width:10,height:10,borderRadius:"50%",background:active.color}}/>
             <h1 style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:17,fontWeight:600,flex:1,letterSpacing:-0.3}}>{active.name}</h1>
-            <span style={{fontSize:12,color:"rgba(255,255,255,0.3)",background:"rgba(255,255,255,0.05)",padding:"3px 10px",borderRadius:20}}>{activeItems.length} autoestudo{activeItems.length!==1?"s":""}</span>
-            {subjects.length>1&&<button onClick={()=>removeSubject(active.id)} style={{background:"none",border:"0.5px solid rgba(247,106,106,0.25)",borderRadius:8,color:"rgba(247,106,106,0.5)",fontSize:11,padding:"4px 10px",cursor:"pointer"}}>Remover matéria</button>}
+            <span style={{fontSize:12,color:"rgba(255,255,255,0.3)",background:"rgba(255,255,255,0.05)",padding:"3px 10px",borderRadius:20}}>{rawItems.length} autoestudo{rawItems.length!==1?"s":""}</span>
             <Btn onClick={()=>modal("addItem",true)} outline color="rgba(255,255,255,0.25)">+ Adicionar</Btn>
-            <Btn onClick={()=>modal("generate",true)} color={active.color} disabled={activeItems.length===0}>✨ Gerar material</Btn>
+            <Btn onClick={()=>modal("generate",true)} color={active.color} disabled={rawItems.length===0}>✨ Gerar material</Btn>
           </div>}
 
+          {/* Search + Sort bar */}
+          {active&&rawItems.length>0&&<div style={{padding:"10px 24px",borderBottom:"0.5px solid rgba(255,255,255,0.06)",display:"flex",gap:10,alignItems:"center",flexShrink:0}}>
+            <div style={{flex:1,position:"relative"}}>
+              <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:13,color:"rgba(255,255,255,0.25)"}}>🔍</span>
+              <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar autoestudos..." style={{...IS,paddingLeft:32,fontSize:12.5}}/>
+            </div>
+            <div style={{display:"flex",gap:4,alignItems:"center"}}>
+              <span style={{fontSize:11,color:"rgba(255,255,255,0.25)",marginRight:2}}>Ordenar:</span>
+              {[{id:"date",label:"Data"},{id:"week",label:"Semana"},{id:"name",label:"Nome"},{id:"type",label:"Tipo"}].map(s=>(
+                <button key={s.id} onClick={()=>setSortBy(s.id)} style={{padding:"4px 10px",borderRadius:6,fontSize:11,cursor:"pointer",border:`0.5px solid ${sortBy===s.id?active.color:"rgba(255,255,255,0.1)"}`,background:sortBy===s.id?active.color+"22":"transparent",color:sortBy===s.id?active.color:"rgba(255,255,255,0.4)",fontWeight:sortBy===s.id?600:400}}>{s.label}</button>
+              ))}
+            </div>
+          </div>}
+
+          {/* Content */}
           <div style={{flex:1,overflowY:"auto",padding:24}}>
-            {!active&&!loading&&<div style={{textAlign:"center",padding:"80px 0",color:"rgba(255,255,255,0.3)"}}><div style={{fontSize:40,marginBottom:12}}>📚</div><div>Crie a primeira matéria da turma</div></div>}
+            {!active&&!loading&&<div style={{textAlign:"center",padding:"80px 0",color:"rgba(255,255,255,0.3)"}}><div style={{fontSize:40,marginBottom:12}}>📚</div><div>Carregando matérias...</div></div>}
             {loading&&<div style={{textAlign:"center",padding:"80px 0"}}><Spinner size={32} color="#7C6AF7"/></div>}
-            {active&&activeItems.length===0&&!loading&&<div style={{textAlign:"center",padding:"60px 0",animation:"fadeUp 0.4s ease"}}>
+
+            {active&&rawItems.length===0&&!loading&&<div style={{textAlign:"center",padding:"60px 0",animation:"fadeUp 0.4s ease"}}>
               <div style={{fontSize:44,marginBottom:14}}>📚</div>
               <div style={{fontSize:15,color:"rgba(255,255,255,0.4)",marginBottom:6}}>Nenhum autoestudo ainda</div>
               <div style={{fontSize:13,color:"rgba(255,255,255,0.25)",marginBottom:22}}>Seja o primeiro a adicionar!</div>
               <Btn onClick={()=>modal("addItem",true)} color={active.color}>+ Adicionar primeiro autoestudo</Btn>
             </div>}
-            {active&&activeItems.length>0&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(250px,1fr))",gap:12}}>
-              {activeItems.map((item,i)=><div key={item.id}
-                style={{background:"rgba(255,255,255,0.04)",border:"0.5px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"14px 16px",animation:`fadeUp 0.3s ease ${i*0.04}s both`,transition:"border-color 0.15s,transform 0.15s"}}
-                onMouseEnter={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,0.15)";e.currentTarget.style.transform="translateY(-1px)"}}
-                onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,0.08)";e.currentTarget.style.transform="translateY(0)"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-                  <span style={{fontSize:22}}>{typeIcon(item.type)}</span>
-                  <button onClick={()=>removeItem(item.id)} style={{background:"none",border:"none",color:"rgba(255,255,255,0.18)",cursor:"pointer",fontSize:13}} onMouseEnter={e=>e.currentTarget.style.color="rgba(247,106,106,0.7)"} onMouseLeave={e=>e.currentTarget.style.color="rgba(255,255,255,0.18)"}>✕</button>
+
+            {active&&rawItems.length>0&&filteredItems.length===0&&<div style={{textAlign:"center",padding:"40px 0",color:"rgba(255,255,255,0.3)"}}>
+              <div style={{fontSize:32,marginBottom:10}}>🔍</div>
+              <div>Nenhum resultado para "{search}"</div>
+            </div>}
+
+            {active&&filteredItems.length>0&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:12}}>
+              {filteredItems.map((item,i)=>(
+                <div key={item.id}
+                  style={{background:"rgba(255,255,255,0.04)",border:"0.5px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"14px 16px",animation:`fadeUp 0.3s ease ${i*0.03}s both`,transition:"border-color 0.15s,transform 0.15s"}}
+                  onMouseEnter={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,0.15)";e.currentTarget.style.transform="translateY(-1px)";}}
+                  onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,0.08)";e.currentTarget.style.transform="translateY(0)";}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+                    <span style={{fontSize:22}}>{typeIcon(item.type)}</span>
+                    <button onClick={()=>setConfirmDel(item.id)} style={{background:"none",border:"none",color:"rgba(255,255,255,0.18)",cursor:"pointer",fontSize:13}}
+                      onMouseEnter={e=>e.currentTarget.style.color="rgba(247,106,106,0.7)"} onMouseLeave={e=>e.currentTarget.style.color="rgba(255,255,255,0.18)"}>✕</button>
+                  </div>
+                  <div style={{fontSize:13,fontWeight:500,color:"rgba(255,255,255,0.9)",lineHeight:1.4,marginBottom:6}}>{item.title}</div>
+                  {item.descricao&&<div style={{fontSize:11,color:"rgba(255,255,255,0.4)",lineHeight:1.5,marginBottom:6}}>{item.descricao.slice(0,100)}{item.descricao.length>100?"...":""}</div>}
+                  {item.url&&<a href={item.url} target="_blank" rel="noreferrer" style={{fontSize:11,color:"rgba(124,106,247,0.65)",display:"block",marginBottom:6,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>🔗 {item.url}</a>}
+                  {/* Who added */}
+                  {item.created_by_name&&<div style={{fontSize:10,color:"rgba(255,255,255,0.22)",marginBottom:6}}>👤 {item.created_by_name}</div>}
+                  <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                    <Tag color={active.color}>{item.type}</Tag>
+                    {item.week&&<Tag color="#F7A83E">{item.week}</Tag>}
+                    {item.date&&<Tag color="#4FB8F7">{item.date}</Tag>}
+                    {item.scraped_content&&<Tag color="#22C9A0">📡 lido</Tag>}
+                  </div>
                 </div>
-                <div style={{fontSize:13,fontWeight:500,color:"rgba(255,255,255,0.9)",lineHeight:1.4,marginBottom:6}}>{item.title}</div>
-                {item.descricao&&<div style={{fontSize:11,color:"rgba(255,255,255,0.4)",lineHeight:1.5,marginBottom:6}}>{item.descricao.slice(0,100)}{item.descricao.length>100?"...":""}</div>}
-                {item.url&&<a href={item.url} target="_blank" rel="noreferrer" style={{fontSize:11,color:"rgba(124,106,247,0.65)",display:"block",marginBottom:6,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>🔗 {item.url}</a>}
-                <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                  <Tag color={active.color}>{item.type}</Tag>
-                  {item.week&&<Tag color="#F7A83E">{item.week}</Tag>}
-                  {item.date&&<Tag color="#4FB8F7">{item.date}</Tag>}
-                  {item.scraped_content&&<Tag color="#22C9A0">📡 lido</Tag>}
-                </div>
-              </div>)}
+              ))}
             </div>}
           </div>
 
-          {active&&activeItems.length>0&&<div style={{padding:"10px 24px",borderTop:"0.5px solid rgba(255,255,255,0.06)",display:"flex",gap:7,flexWrap:"wrap",flexShrink:0}}>
+          {/* Quick action bar */}
+          {active&&rawItems.length>0&&<div style={{padding:"10px 24px",borderTop:"0.5px solid rgba(255,255,255,0.06)",display:"flex",gap:7,flexWrap:"wrap",flexShrink:0}}>
             <div style={{fontSize:11,color:"rgba(255,255,255,0.25)",alignSelf:"center",marginRight:4}}>Gerar rápido:</div>
             {MODES.map(m=><button key={m.id} onClick={()=>modal("generate",true)} style={{padding:"4px 12px",borderRadius:20,border:"0.5px solid rgba(255,255,255,0.1)",background:"transparent",color:"rgba(255,255,255,0.5)",fontSize:12,cursor:"pointer",transition:"all 0.12s"}}
               onMouseEnter={e=>{e.currentTarget.style.borderColor=active.color;e.currentTarget.style.color=active.color;}}
@@ -807,10 +797,16 @@ export default function App() {
       )}
     </div>
 
-    <AddSubjectModal open={modals.addSubject} onClose={()=>modal("addSubject",false)} onAdd={addSubject}/>
+    {/* Modals */}
     <AddItemModal open={modals.addItem} onClose={()=>modal("addItem",false)} onAdd={addItem} subjects={subjects}/>
-    {active&&<GenerateModal open={modals.generate} onClose={()=>modal("generate",false)} subject={active} items={activeItems} onSave={saveMateria}/>}
+    {active&&<GenerateModal open={modals.generate} onClose={()=>modal("generate",false)} subject={active} items={rawItems} onSave={saveMateria}/>}
     <SavedModal open={modals.saved} onClose={()=>modal("saved",false)} materials={savedMaterials} onDelete={deleteMaterial} subjects={subjects}/>
+
+    {/* Confirm delete item */}
+    <ConfirmModal open={!!confirmDel} onClose={()=>setConfirmDel(null)}
+      onConfirm={()=>{ removeItem(confirmDel); setConfirmDel(null); }}
+      title="Remover autoestudo?" message="Tem certeza que quer remover este autoestudo? Esta ação não pode ser desfeita." danger/>
+
     <Toast msg={toast} onClose={()=>setToast("")}/>
   </>;
 }
