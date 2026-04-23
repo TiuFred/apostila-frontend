@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const COLORS = ["#7C6AF7","#22C9A0","#F76A6A","#F7A83E","#4FB8F7","#D46AF7","#6AF7A8","#F7D46A"];
@@ -22,7 +22,7 @@ function useLocalStorage(key, init) {
 }
 
 // ── small helpers ─────────────────────────────────────────────────────────────
-function typeIcon(t) { return {artigo:"📄",vídeo:"🎥",livro:"📘",aula:"🎓",anotação:"📝"}[t]||"📎"; }
+function typeIcon(t) { return {artigo:"📄",vídeo:"🎥",livro:"📘",aula:"🎓",anotação:"📝",pdf:"📑"}[t]||"📎"; }
 function clx(...c) { return c.filter(Boolean).join(" "); }
 
 // ── components ────────────────────────────────────────────────────────────────
@@ -111,8 +111,15 @@ function AddItemModal({ open, onClose, onAdd }) {
   const [type, setType]         = useState("artigo");
   const [scraping, setScraping] = useState(false);
   const [preview, setPreview]   = useState(null);
+  const [pdfFile, setPdfFile]   = useState(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [inputMode, setInputMode]   = useState("link"); // "link" | "pdf"
+  const fileRef = useRef(null);
 
-  const reset = () => { setTitle(""); setUrl(""); setDesc(""); setWeek(""); setDate(""); setType("artigo"); setPreview(null); };
+  const reset = () => {
+    setTitle(""); setUrl(""); setDesc(""); setWeek(""); setDate("");
+    setType("artigo"); setPreview(null); setPdfFile(null); setInputMode("link");
+  };
 
   const scrape = async () => {
     if (!url.trim()) return;
@@ -127,9 +134,40 @@ function AddItemModal({ open, onClose, onAdd }) {
     setScraping(false);
   };
 
+  const handlePdf = async (file) => {
+    if (!file || file.type !== "application/pdf") return;
+    setPdfFile(file);
+    if (!title) setTitle(file.name.replace(/\.pdf$/i,"").slice(0,80));
+    setPdfLoading(true);
+    try {
+      // Read as base64 in the browser — no FormData needed
+      const b64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const r = await fetch(`${API}/extract-pdf-b64`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data: b64 })
+      });
+      const d = await r.json();
+      if (d.content) {
+        setPreview({ content: d.content, length: d.content.length });
+        if (!desc && d.content) setDesc(d.content.slice(0,200));
+      }
+    } catch { setPreview({error:true}); }
+    setPdfLoading(false);
+  };
+
   const submit = () => {
     if (!title.trim()) return;
-    onAdd({ id:Date.now(), title:title.trim(), url:url.trim(), desc:desc.trim(), week, date, type, scraped_content:preview?.content||"" });
+    onAdd({
+      id: Date.now(), title: title.trim(), url: url.trim(), desc: desc.trim(),
+      week, date, type, scraped_content: preview?.content || "",
+      has_pdf: !!pdfFile, pdf_name: pdfFile?.name || ""
+    });
     reset(); onClose();
   };
 
@@ -143,7 +181,19 @@ function AddItemModal({ open, onClose, onAdd }) {
       <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Ex: Séries de Taylor — Khan Academy" autoFocus style={inputStyle} />
     </Field>
 
-    <Field label="Link do autoestudo">
+    {/* Mode toggle */}
+    <div style={{display:"flex",gap:0,marginBottom:14,borderRadius:8,overflow:"hidden",border:"0.5px solid rgba(255,255,255,0.12)"}}>
+      {[["link","🔗 Link / URL"],["pdf","📄 Upload PDF"]].map(([mode,label])=>(
+        <button key={mode} onClick={()=>setInputMode(mode)} style={{
+          flex:1,padding:"8px 0",border:"none",fontSize:12,fontWeight:600,cursor:"pointer",transition:"all 0.15s",
+          background:inputMode===mode?"#7C6AF7":"rgba(255,255,255,0.04)",
+          color:inputMode===mode?"#fff":"rgba(255,255,255,0.45)",
+        }}>{label}</button>
+      ))}
+    </div>
+
+    {/* Link mode */}
+    {inputMode==="link" && <Field label="Link do autoestudo">
       <div style={{display:"flex",gap:8}}>
         <input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://..." onKeyDown={e=>e.key==="Enter"&&scrape()} style={{...inputStyle,flex:1}} />
         <button onClick={scrape} disabled={!url.trim()||scraping}
@@ -155,10 +205,39 @@ function AddItemModal({ open, onClose, onAdd }) {
         ✓ Conteúdo extraído — {preview.content?.length||0} caracteres lidos
       </div>}
       {preview?.error && <div style={{marginTop:6,fontSize:11,color:"#F76A6A"}}>Não foi possível ler o link. Adicione mesmo assim.</div>}
-    </Field>
+    </Field>}
+
+    {/* PDF mode */}
+    {inputMode==="pdf" && <Field label="Arquivo PDF">
+      <input ref={fileRef} type="file" accept="application/pdf" style={{display:"none"}}
+        onChange={e=>e.target.files[0]&&handlePdf(e.target.files[0])} />
+      <div
+        onClick={()=>fileRef.current?.click()}
+        onDragOver={e=>e.preventDefault()}
+        onDrop={e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f)handlePdf(f);}}
+        style={{
+          border:`1.5px dashed ${pdfFile?"rgba(124,106,247,0.6)":"rgba(255,255,255,0.15)"}`,
+          borderRadius:10,padding:"24px 16px",textAlign:"center",cursor:"pointer",
+          background:pdfFile?"rgba(124,106,247,0.08)":"rgba(255,255,255,0.03)",
+          transition:"all 0.2s"
+        }}>
+        {pdfLoading && <><Spinner size={20} color="#7C6AF7"/><div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginTop:8}}>Extraindo texto do PDF...</div></>}
+        {!pdfLoading && !pdfFile && <>
+          <div style={{fontSize:28,marginBottom:8}}>📄</div>
+          <div style={{fontSize:13,color:"rgba(255,255,255,0.5)",marginBottom:4}}>Clique ou arraste o PDF aqui</div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.25)"}}>O texto será extraído automaticamente</div>
+        </>}
+        {!pdfLoading && pdfFile && <>
+          <div style={{fontSize:24,marginBottom:6}}>✅</div>
+          <div style={{fontSize:13,fontWeight:600,color:"#c4bbff",marginBottom:3}}>{pdfFile.name}</div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.35)"}}>{preview?.content ? `${preview.content.length} caracteres extraídos` : "clique para trocar o arquivo"}</div>
+        </>}
+      </div>
+      {preview?.error && <div style={{marginTop:6,fontSize:11,color:"#F76A6A"}}>Não foi possível extrair o texto. Adicione uma descrição manual.</div>}
+    </Field>}
 
     <Field label="Descrição">
-      <textarea value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Resumo ou observações sobre esse conteúdo (opcional)" rows={3}
+      <textarea value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Resumo ou observações (opcional — preenchido automaticamente)" rows={3}
         style={{...inputStyle,resize:"vertical",lineHeight:1.5}} />
     </Field>
 
@@ -178,7 +257,7 @@ function AddItemModal({ open, onClose, onAdd }) {
 
     <Field label="Tipo">
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-        {["artigo","vídeo","livro","aula","anotação"].map(t=>(
+        {["artigo","vídeo","livro","aula","anotação","pdf"].map(t=>(
           <button key={t} onClick={()=>setType(t)} style={{
             padding:"5px 12px",borderRadius:20,fontSize:12,cursor:"pointer",transition:"all 0.12s",
             border:`0.5px solid ${type===t?"rgba(124,106,247,0.5)":"rgba(255,255,255,0.12)"}`,
