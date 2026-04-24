@@ -675,14 +675,14 @@ function CreditsWidget({credits,limit,onLimitChange}){
       <div style={{display:"flex",gap:4,alignItems:"center",marginBottom:4}}>
         <span style={{fontSize:10,color:"rgba(255,255,255,0.35)"}}>Limite $</span>
         <input value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveLimit()}
-          style={{...{width:"100%",padding:"3px 6px",borderRadius:5,border:"0.5px solid rgba(124,106,247,0.5)",background:"rgba(124,106,247,0.1)",color:"#e8e6ff",fontSize:12,boxSizing:"border-box",fontFamily:"'DM Sans',sans-serif"},flex:1,width:60}}
+          style={{flex:1,padding:"3px 6px",borderRadius:5,border:"0.5px solid rgba(124,106,247,0.5)",background:"rgba(124,106,247,0.1)",color:"#e8e6ff",fontSize:12,boxSizing:"border-box",fontFamily:"'DM Sans',sans-serif",width:60}}
           autoFocus type="number" min="1" step="1"/>
         <button onClick={saveLimit} style={{background:"#7C6AF7",border:"none",borderRadius:5,color:"#fff",fontSize:11,padding:"3px 8px",cursor:"pointer"}}>OK</button>
       </div>
     ):(
       <div style={{display:"flex",alignItems:"baseline",gap:4,marginBottom:5}}>
         <span style={{fontSize:14,fontWeight:700,color:barColor}}>${cost.toFixed(4)}</span>
-        <span style={{fontSize:10,color:"rgba(255,255,255,0.25)"}}>/ ${limit.toFixed(0)}</span>
+        <span style={{fontSize:10,color:"rgba(255,255,255,0.25)"}}>/ ${Number(limit).toFixed(0)}</span>
       </div>
     )}
     <div style={{height:4,borderRadius:4,background:"rgba(255,255,255,0.08)",overflow:"hidden",marginBottom:4}}>
@@ -703,6 +703,7 @@ export default function App(){
   const [modals,setModals]=useState({addItem:false,generate:false,saved:false});
   const [toast,setToast]=useState("");const [backendOk,setBackendOk]=useState(null);const [credits,setCredits]=useState(null);
   const [spendingLimit,setSpendingLimit]=useLocalStorage("spendingLimit",10);
+
   const [loading,setLoading]=useState(false);
   const [search,setSearch]=useState("");
   const [sortBy,setSortBy]=useState("week"); // default sort by week
