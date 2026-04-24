@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "@supabase/supabase-js";
 
 const API      = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const SUPA_URL = "https://gtjcdznwsrvbkxgeuvdd.supabase.co";
@@ -425,7 +425,7 @@ function GenerateModal({open,onClose,subject,items,onSave}){
         <span style={{fontSize:16}}>✅</span>
         <div style={{flex:1}}>
           <div style={{fontSize:12,fontWeight:600,color:"#4FB8F7",marginBottom:2}}>Enviado para o Google Drive!</div>
-          <a href={driveLink} target="_blank" rel="noreferrer" style={{fontSize:11,color:"rgba(75,184,247,0.7)"}}>Abrir no Drive →</a>
+          <a href={driveLink} target="_blank" rel="noreferrer" style={{fontSize:11,color:"rgba(75,184,247,0.7)"}}>Abrir no Drive &rarr;</a>
         </div>
       </div>}
       <ResultPreview mode={result.mode} data={result.data} color={subject.color}/>
