@@ -6,6 +6,16 @@ const SUPA_URL = "https://gtjcdznwsrvbkxgeuvdd.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd0amNkem53c3J2Ymt4Z2V1dmRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5NTU5ODcsImV4cCI6MjA5MjUzMTk4N30.IGBSgdUMmOw9_hCcirfK3-Z0p6EliWxACnPP5Dk3uvc";
 const supabase = createClient(SUPA_URL, SUPA_KEY);
 
+function useLocalStorage(key, init) {
+  const [val, setVal] = useState(() => {
+    try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : init; } catch { return init; }
+  });
+  const set = useCallback(v => {
+    setVal(prev => { const next = typeof v === "function" ? v(prev) : v; localStorage.setItem(key, JSON.stringify(next)); return next; });
+  }, [key]);
+  return [val, set];
+}
+
 const FIXED_SUBJECTS = [
   {name:"Programação", color:"#7C6AF7"},
   {name:"UX",          color:"#F76A6A"},
