@@ -19,9 +19,10 @@ const WEEKS = Array.from({length:10},(_,i)=>`Semana ${String(i+1).padStart(2,"0"
 const MODES = [
   {id:"apostila",    label:"Apostila Completa",    icon:"📋", desc:"Resumo organizado e didático"},
   {id:"mapa",        label:"Mapa Mental",           icon:"🗺️", desc:"Estrutura visual de conceitos"},
-  {id:"objetiva",    label:"Simulado Objetiva",     icon:"🎯", desc:"12 questões de múltipla escolha"},
-  {id:"dissertativa",label:"Simulado Dissertativo", icon:"✍️", desc:"6 questões abertas com gabarito"},
-  {id:"flashcards",  label:"Flashcards",            icon:"🃏", desc:"20 cards de revisão rápida"},
+  {id:"objetiva",    label:"Simulado Objetiva",     icon:"🎯", desc:"12 questões com somatório"},
+  {id:"dissertativa",label:"Simulado Dissertativo", icon:"✍️", desc:"6 questões com critérios de correção"},
+  {id:"flashcards",  label:"Flashcards",            icon:"🃏", desc:"20 cards de revisão ativa"},
+  {id:"desespero",   label:"Desespero para Prova",  icon:"🚨", desc:"Revisão intensiva de última hora"},
 ];
 const EVENT_TYPES = [
   {id:"prova",        label:"Prova",        color:"#F76A6A", icon:"📝"},
@@ -480,16 +481,41 @@ function ResultPreview({mode,data,color}){
     <div style={{fontWeight:700,fontSize:14,color:"#fff",marginBottom:4}}>{data.titulo}</div>
     <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginBottom:12}}>Questões primeiro — gabarito ao final</div>
     {data.questoes?.map((q,i)=><div key={i} style={{marginBottom:10,padding:10,background:"rgba(255,255,255,0.04)",borderRadius:8}}>
-      <div style={{fontWeight:600,color,fontSize:12,marginBottom:4}}>Q{q.numero}</div>
+      <div style={{fontWeight:600,color,fontSize:12,marginBottom:4}}>Q{q.numero} <span style={{fontWeight:400,color:"rgba(255,255,255,0.4)",fontSize:10}}>· {q.valor} pts · {q.dificuldade}</span></div>
       <div style={{fontSize:12,color:"rgba(255,255,255,0.8)"}}>{q.enunciado}</div>
     </div>)}
     <div style={{borderTop:"0.5px solid rgba(255,255,255,0.1)",paddingTop:10}}>
-      <div style={{fontSize:12,fontWeight:600,color:"rgba(255,255,255,0.5)",marginBottom:8}}>Gabarito</div>
-      {data.questoes?.map((q,i)=><div key={i} style={{marginBottom:8,padding:"8px 10px",background:"rgba(34,201,160,0.06)",borderRadius:6,borderLeft:"2px solid #22C9A0"}}>
-        <div style={{fontSize:11,fontWeight:600,color:"#22C9A0",marginBottom:3}}>Q{q.numero}</div>
-        <div style={{fontSize:11,color:"rgba(255,255,255,0.65)"}}>{q.gabarito?.slice(0,100)}...</div>
+      <div style={{fontSize:12,fontWeight:600,color:"rgba(255,255,255,0.5)",marginBottom:8}}>Gabarito + Critérios</div>
+      {data.questoes?.map((q,i)=><div key={i} style={{marginBottom:10,padding:"8px 10px",background:"rgba(34,201,160,0.06)",borderRadius:6,borderLeft:"2px solid #22C9A0"}}>
+        <div style={{fontSize:11,fontWeight:600,color:"#22C9A0",marginBottom:3}}>Q{q.numero} — {q.valor} pts</div>
+        <div style={{fontSize:11,color:"rgba(255,255,255,0.65)",marginBottom:4}}>{q.gabarito?.slice(0,100)}...</div>
+        {q.criterio_correcao_detalhado&&<div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+          {q.criterio_correcao_detalhado.map((c,j)=><span key={j} style={{fontSize:10,padding:"1px 6px",borderRadius:4,background:"rgba(34,201,160,0.15)",color:"#22C9A0"}}>{c.criterio} ({c.pontuacao})</span>)}
+        </div>}
       </div>)}
     </div>
+  </div>;
+
+  if(mode==="desespero")return<div style={{fontSize:12.5,color:"rgba(255,255,255,0.85)"}}>
+    <div style={{fontWeight:700,fontSize:15,color:"#F76A6A",marginBottom:12}}>🚨 {data.titulo}</div>
+    {data.principais_conceitos?.length>0&&<div style={{marginBottom:12}}>
+      <div style={{fontWeight:600,color,fontSize:12,marginBottom:6}}>📌 Principais conceitos</div>
+      {data.principais_conceitos.slice(0,4).map((c,i)=><div key={i} style={{fontSize:11,color:"rgba(255,255,255,0.7)",marginBottom:3,paddingLeft:8,borderLeft:`2px solid ${color}`}}>{c}</div>)}
+      {data.principais_conceitos.length>4&&<div style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>+{data.principais_conceitos.length-4} mais no PDF</div>}
+    </div>}
+    {data.o_que_mais_cai?.length>0&&<div style={{marginBottom:12}}>
+      <div style={{fontWeight:600,color:"#F7A83E",fontSize:12,marginBottom:6}}>🎯 O que mais cai</div>
+      {data.o_que_mais_cai.slice(0,3).map((c,i)=><div key={i} style={{fontSize:11,color:"rgba(255,255,255,0.7)",marginBottom:3}}>• {c}</div>)}
+    </div>}
+    {data.pegadinhas?.length>0&&<div style={{marginBottom:12}}>
+      <div style={{fontWeight:600,color:"#F76A6A",fontSize:12,marginBottom:6}}>⚠️ Pegadinhas</div>
+      {data.pegadinhas.slice(0,3).map((c,i)=><div key={i} style={{fontSize:11,color:"rgba(255,255,255,0.7)",marginBottom:3}}>• {c}</div>)}
+    </div>}
+    {data.checklist_final?.length>0&&<div>
+      <div style={{fontWeight:600,color:"#22C9A0",fontSize:12,marginBottom:6}}>✅ Checklist final</div>
+      {data.checklist_final.slice(0,4).map((c,i)=><div key={i} style={{fontSize:11,color:"rgba(255,255,255,0.7)",marginBottom:3}}>☐ {c}</div>)}
+    </div>}
+    <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",textAlign:"center",marginTop:10}}>Conteúdo completo no PDF</div>
   </div>;
   if(mode==="flashcards")return<div>
     <div style={{fontWeight:700,fontSize:14,color:"#fff",marginBottom:12}}>{data.titulo}</div>
