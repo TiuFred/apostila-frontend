@@ -663,7 +663,7 @@ export default function App(){
   const [calEvents,setCalEvents]=useState([]);const [savedMaterials,setSavedMaterials]=useState([]);
   const [activeId,setActiveId]=useState(null);const [page,setPage]=useState("subjects");
   const [modals,setModals]=useState({addItem:false,generate:false,saved:false});
-  const [toast,setToast]=useState("");const [backendOk,setBackendOk]=useState(null);
+  const [toast,setToast]=useState("");const [backendOk,setBackendOk]=useState(null);const [credits,setCredits]=useState(null);
   const [loading,setLoading]=useState(false);
   const [search,setSearch]=useState("");
   const [sortBy,setSortBy]=useState("week"); // default sort by week
@@ -682,6 +682,7 @@ export default function App(){
     if(!user)return;
     seedAndLoad();
     fetch(`${API}/health`).then(r=>r.json()).then(()=>setBackendOk(true)).catch(()=>setBackendOk(false));
+    fetch(`${API}/credits`).then(r=>r.json()).then(d=>setCredits(d)).catch(()=>{});
   },[user]);
 
   const seedAndLoad=async()=>{
@@ -802,6 +803,19 @@ export default function App(){
 
         {backendOk===false&&<div style={{margin:"0 10px 8px",padding:"6px 10px",background:"rgba(247,106,106,0.15)",border:"0.5px solid rgba(247,106,106,0.3)",borderRadius:8,fontSize:11,color:"#F76A6A"}}>⚠ Backend offline</div>}
         {backendOk===true&&<div style={{margin:"0 10px 8px",padding:"4px 10px",background:"rgba(34,201,160,0.1)",borderRadius:8,fontSize:11,color:"#22C9A0"}}>● Online</div>}
+        {credits&&<div style={{margin:"0 10px 8px",padding:"6px 10px",borderRadius:8,background:"rgba(255,255,255,0.04)",border:"0.5px solid rgba(255,255,255,0.08)"}}>
+          <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",marginBottom:2}}>Créditos Anthropic</div>
+          {credits.balance_usd!=null?(
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <span style={{fontSize:13,fontWeight:700,color:credits.balance_usd>1?"#22C9A0":credits.balance_usd>0.2?"#F7A83E":"#F76A6A"}}>
+                {credits.balance_display}
+              </span>
+              <span style={{fontSize:10,color:"rgba(255,255,255,0.25)"}}>disponível</span>
+            </div>
+          ):(
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.3)"}}>Indisponível</div>
+          )}
+        </div>}
 
         <div style={{padding:"0 8px 6px"}}>
           {[{id:"subjects",label:"📚 Matérias"},{id:"calendar",label:"📅 Calendário",badge:upcomingCount}].map(nav=>(
