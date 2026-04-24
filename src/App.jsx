@@ -702,6 +702,95 @@ function CalendarPage({events,onAddEvent,onDeleteEvent}){
 }
 
 // ── Main App ───────────────────────────────────────────────────────────────────
+// ── EditItemModal ──────────────────────────────────────────────────────────────
+function EditItemModal({open,onClose,item,onSave,subjects}){
+  const [title,setTitle]=useState("");
+  const [url,setUrl]=useState("");
+  const [notes,setNotes]=useState("");
+  const [week,setWeek]=useState("");
+  const [date,setDate]=useState("");
+  const [type,setType]=useState("artigo");
+  const [subjectId,setSubjectId]=useState("");
+
+  useEffect(()=>{
+    if(item){
+      setTitle(item.title||"");setUrl(item.url||"");setNotes(item.notes||"");
+      setWeek(item.week||"");setDate(item.date||"");setType(item.type||"artigo");
+      setSubjectId(item.subject_id||"");
+    }
+  },[item]);
+
+  const submit=()=>{
+    if(!title.trim())return;
+    onSave(item.id,{title:title.trim(),url:url.trim(),notes:notes.trim(),week,date,type,subject_id:subjectId});
+    onClose();
+  };
+
+  if(!item)return null;
+  return<Modal open={open} onClose={onClose}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+      <h3 style={{margin:0,fontSize:16,fontWeight:700}}>Editar autoestudo</h3>
+      <button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,0.3)",cursor:"pointer",fontSize:18}}>✕</button>
+    </div>
+
+    <div style={{marginBottom:14}}>
+      <Label text="Matéria"/>
+      <select value={subjectId} onChange={e=>setSubjectId(e.target.value)} style={{...IS,cursor:"pointer",appearance:"none",backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='rgba(255,255,255,0.4)' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`,backgroundRepeat:"no-repeat",backgroundPosition:"right 12px center",paddingRight:32}}>
+        {subjects.map(s=><option key={s.id} value={s.id} style={{background:"#1a1a2e"}}>{s.name}</option>)}
+      </select>
+    </div>
+
+    <div style={{marginBottom:14}}>
+      <Label text="Nome da atividade" required/>
+      <input value={title} onChange={e=>setTitle(e.target.value)} style={IS} autoFocus/>
+    </div>
+
+    <div style={{marginBottom:14}}>
+      <Label text="Link"/>
+      <input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://..." style={IS}/>
+    </div>
+
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+      <div>
+        <Label text="Semana"/>
+        <select value={week} onChange={e=>setWeek(e.target.value)} style={{...IS,cursor:"pointer",appearance:"none",backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='rgba(255,255,255,0.4)' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`,backgroundRepeat:"no-repeat",backgroundPosition:"right 12px center",paddingRight:32}}>
+          <option value="">— Selecione —</option>
+          {WEEKS.map(w=><option key={w} value={w} style={{background:"#1a1a2e"}}>{w}</option>)}
+        </select>
+      </div>
+      <div>
+        <Label text="Data"/>
+        <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{...IS,colorScheme:"dark"}}/>
+      </div>
+    </div>
+
+    <div style={{marginBottom:14}}>
+      <Label text="Tipo"/>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {["artigo","vídeo","livro","aula","anotação","pdf"].map(t=>(
+          <button key={t} onClick={()=>setType(t)} style={{padding:"5px 12px",borderRadius:20,fontSize:12,cursor:"pointer",border:`0.5px solid ${type===t?"rgba(124,106,247,0.5)":"rgba(255,255,255,0.12)"}`,background:type===t?"rgba(124,106,247,0.2)":"transparent",color:type===t?"#c4bbff":"rgba(255,255,255,0.5)",fontWeight:type===t?600:400}}>{type===t?"✓ ":""}{t}</button>
+        ))}
+      </div>
+    </div>
+
+    <div style={{marginBottom:18}}>
+      <Label text="Notas para a IA"/>
+      <textarea value={notes} onChange={e=>setNotes(e.target.value)}
+        placeholder="Instrução para a IA ao gerar material..."
+        rows={3} style={{...IS,resize:"vertical",lineHeight:1.6}}/>
+    </div>
+
+    {item.scraped_content&&<div style={{marginBottom:14,padding:"8px 12px",background:"rgba(34,201,160,0.08)",borderRadius:8,border:"0.5px solid rgba(34,201,160,0.2)"}}>
+      <div style={{fontSize:11,color:"#22C9A0"}}>📡 Conteúdo extraído salvo — {item.scraped_content.length} caracteres</div>
+    </div>}
+
+    <div style={{display:"flex",gap:8}}>
+      <Btn onClick={onClose} outline color="rgba(255,255,255,0.25)" full>Cancelar</Btn>
+      <Btn onClick={submit} disabled={!title.trim()} full>Salvar alterações</Btn>
+    </div>
+  </Modal>;
+}
+
 export default function App(){
   const [user,setUser]=useState(null);const [authLoading,setAuthLoading]=useState(true);
   const [subjects,setSubjects]=useState([]);const [items,setItems]=useState([]);
@@ -714,6 +803,7 @@ export default function App(){
   const [sortBy,setSortBy]=useState("week"); // default sort by week
   const [viewMode,setViewMode]=useState("grid"); // "grid" | "week"
   const [confirmDel,setConfirmDel]=useState(null);
+  const [editItem,setEditItem]=useState(null);
 
   const modal=(k,v)=>setModals(m=>({...m,[k]:v}));
 
@@ -781,6 +871,12 @@ export default function App(){
     setItems(it=>it.filter(i=>i.id!==id));
   };
 
+  const updateItem=async(id,changes)=>{
+    const{data,error}=await supabase.from("items").update(changes).eq("id",id).select().single();
+    if(!error&&data) setItems(it=>it.map(i=>i.id===id?data:i));
+    setToast("Autoestudo atualizado!");
+  };
+
   const saveMateria=async(mat)=>{
     const{data,error}=await supabase.from("saved_materials").insert({...mat,created_by:user.id}).select().single();
     if(error){setToast("Erro ao salvar");return;}
@@ -801,17 +897,18 @@ export default function App(){
   const upcomingCount=calEvents.filter(e=>e.date>=todayStr).length;
 
   const ItemCard=({item})=>(
-    <div style={{background:"rgba(255,255,255,0.04)",border:"0.5px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"14px 16px",transition:"border-color 0.15s,transform 0.15s"}}
-      onMouseEnter={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,0.15)";e.currentTarget.style.transform="translateY(-1px)";}}
+    <div onClick={()=>setEditItem(item)}
+      style={{background:"rgba(255,255,255,0.04)",border:"0.5px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"14px 16px",transition:"border-color 0.15s,transform 0.15s",cursor:"pointer"}}
+      onMouseEnter={e=>{e.currentTarget.style.borderColor=active?.color||"rgba(255,255,255,0.15)";e.currentTarget.style.transform="translateY(-1px)";}}
       onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,0.08)";e.currentTarget.style.transform="translateY(0)";}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
         <span style={{fontSize:20}}>{typeIcon(item.type)}</span>
-        <button onClick={()=>setConfirmDel(item.id)} style={{background:"none",border:"none",color:"rgba(255,255,255,0.18)",cursor:"pointer",fontSize:13}}
+        <button onClick={e=>{e.stopPropagation();setConfirmDel(item.id);}} style={{background:"none",border:"none",color:"rgba(255,255,255,0.18)",cursor:"pointer",fontSize:13}}
           onMouseEnter={e=>e.currentTarget.style.color="rgba(247,106,106,0.7)"} onMouseLeave={e=>e.currentTarget.style.color="rgba(255,255,255,0.18)"}>✕</button>
       </div>
       <div style={{fontSize:13,fontWeight:500,color:"rgba(255,255,255,0.9)",lineHeight:1.4,marginBottom:5}}>{item.title}</div>
       {item.notes&&<div style={{fontSize:11,color:"rgba(247,168,62,0.7)",lineHeight:1.5,marginBottom:5,fontStyle:"italic"}}>📝 {item.notes.slice(0,80)}{item.notes.length>80?"...":""}</div>}
-      {item.url&&<a href={item.url} target="_blank" rel="noreferrer" style={{fontSize:11,color:"rgba(124,106,247,0.65)",display:"block",marginBottom:5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>🔗 {item.url}</a>}
+      {item.url&&<a href={item.url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{fontSize:11,color:"rgba(124,106,247,0.65)",display:"block",marginBottom:5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>🔗 {item.url}</a>}
       {item.created_by_name&&<div style={{fontSize:10,color:"rgba(255,255,255,0.22)",marginBottom:5}}>👤 {item.created_by_name}</div>}
       <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
         <Tag color={active?.color||"#7C6AF7"}>{item.type}</Tag>
@@ -819,6 +916,7 @@ export default function App(){
         {item.date&&<Tag color="#4FB8F7">{item.date}</Tag>}
         {item.scraped_content&&<Tag color="#22C9A0">📡 lido</Tag>}
       </div>
+      <div style={{fontSize:10,color:"rgba(255,255,255,0.15)",marginTop:8,textAlign:"right"}}>clique para editar</div>
     </div>
   );
 
@@ -966,6 +1064,7 @@ export default function App(){
     </div>
 
     <AddItemModal open={modals.addItem} onClose={()=>modal("addItem",false)} onAdd={addItem} subjects={subjects}/>
+    <EditItemModal open={!!editItem} onClose={()=>setEditItem(null)} item={editItem} onSave={updateItem} subjects={subjects}/>
     {active&&<GenerateModal open={modals.generate} onClose={()=>modal("generate",false)} subject={active} items={rawItems} onSave={saveMateria}/>}
     <SavedModal open={modals.saved} onClose={()=>modal("saved",false)} materials={savedMaterials} onDelete={deleteMaterial} subjects={subjects}/>
     <ConfirmModal open={!!confirmDel} onClose={()=>setConfirmDel(null)} onConfirm={()=>{removeItem(confirmDel);setConfirmDel(null);}} title="Remover autoestudo?" message="Tem certeza? Esta ação não pode ser desfeita." danger/>
