@@ -343,6 +343,8 @@ function GenerateModal({open,onClose,subject,items,onSave}){
     onSave({mode:result.mode,title:`${MODES.find(m=>m.id===result.mode)?.label} — ${subject.name} (${selectedWeeks.join(", ")})`,data:result.data});
     onClose();
   };
+
+  return<Modal open={open} onClose={onClose} wide={phase==="done"}>
     {phase==="config"&&<>
       <h3 style={{margin:"0 0 4px",fontSize:16,fontWeight:700}}>Gerar material — {subject.name}</h3>
       <p style={{fontSize:12,color:"rgba(255,255,255,0.35)",marginBottom:16}}>Selecione as semanas e o tipo de material</p>
