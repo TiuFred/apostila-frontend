@@ -149,13 +149,14 @@ function AddItemModal({open,onClose,onAdd,subjects}){
   const [linkOk,setLinkOk]=useState(null);
   const [pdfOk,setPdfOk]=useState(null);
   const [content,setContent]=useState("");
+  const [driveOk,setDriveOk]=useState(null);
+  const [pdfB64,setPdfB64]=useState("");
   const fileRef=useRef(null);
 
   useEffect(()=>{if(open&&subjects.length>0)setSubjectId(s=>s||subjects[0].id);},[open,subjects]);
 
-  const reset=()=>{setTitle("");setUrl("");setNotes("");setWeek("");setDate("");setType("artigo");setPdfFile(null);setLinkOk(null);setPdfOk(null);setContent("");};
+  const reset=()=>{setTitle("");setUrl("");setNotes("");setWeek("");setDate("");setType("artigo");setPdfFile(null);setLinkOk(null);setPdfOk(null);setContent("");setDriveOk(null);setPdfB64("");};
 
-  // Link scrape — does NOT auto-fill title or notes anymore
   const scrape=async()=>{
     if(!url.trim())return;
     setScraping(true);setLinkOk(null);
@@ -168,22 +169,52 @@ function AddItemModal({open,onClose,onAdd,subjects}){
     setScraping(false);
   };
 
+  const uploadPdfToDrive=async(b64,fileTitle,subId,wk)=>{
+    const subjectName=subjects.find(s=>s.id===subId)?.name||"";
+    if(!subjectName||!wk) return;
+    try{
+      await fetch(`${API}/upload-pdf-drive`,{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({data:b64,title:fileTitle,subject:subjectName,week:wk})
+      });
+      setDriveOk(true);
+    }catch{ setDriveOk(false); }
+  };
+
   const pickPdf=()=>fileRef.current?.click();
   const handlePdf=async(file)=>{
     if(!file||file.type!=="application/pdf")return;
     setPdfFile(file);
-    setPdfBusy(true);setPdfOk(null);
+    setPdfBusy(true);setPdfOk(null);setDriveOk(null);
     try{
       const b64=await new Promise((res,rej)=>{const rd=new FileReader();rd.onload=()=>res(rd.result.split(",")[1]);rd.onerror=rej;rd.readAsDataURL(file);});
+      setPdfB64(b64);
       const r=await fetch(`${API}/extract-pdf-b64`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({data:b64})});
       const d=await r.json();
-      if(d.content){setContent(d.content);setPdfOk(true);}else setPdfOk(false);
+      if(d.content){
+        setContent(d.content);
+        setPdfOk(true);
+        // Auto-upload to Drive if week and subject already selected
+        const currentTitle=title||file.name.replace(/\.pdf$/i,"");
+        if(week&&subjectId) await uploadPdfToDrive(b64,currentTitle,subjectId,week);
+      }else setPdfOk(false);
     }catch{setPdfOk(false);}
     setPdfBusy(false);
   };
 
+  // Upload to drive when week changes after PDF is already loaded
+  useEffect(()=>{
+    if(pdfOk&&pdfB64&&week&&subjectId&&driveOk===null){
+      uploadPdfToDrive(pdfB64,title||pdfFile?.name||"autoestudo",subjectId,week);
+    }
+  },[week,subjectId]);
+
   const submit=()=>{
     if(!title.trim()||!subjectId||!week)return;
+    // If PDF loaded but drive not yet uploaded (week was selected after PDF), upload now
+    if(pdfOk&&pdfB64&&driveOk===null){
+      uploadPdfToDrive(pdfB64,title,subjectId,week);
+    }
     onAdd({title:title.trim(),url:url.trim(),notes:notes.trim(),week,date,type,scraped_content:content,subject_id:subjectId});
     reset();onClose();
   };
@@ -245,7 +276,11 @@ function AddItemModal({open,onClose,onAdd,subjects}){
           {pdfBusy?<Spinner size={18} color="#7C6AF7"/>:<span style={{fontSize:22}}>📑</span>}
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:13,fontWeight:600,color:"#c4bbff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{pdfFile.name}</div>
-            <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginTop:2}}>{pdfBusy?"Extraindo texto...":pdfOk===true?`✓ ${content.length} caracteres extraídos`:pdfOk===false?"Erro — adicione notas manuais":""}</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginTop:2}}>
+              {pdfBusy?"Extraindo texto...":
+               pdfOk===true?`✓ ${content.length} caracteres${driveOk===true?" · 📁 Salvo no Drive":driveOk===false?" · ⚠ Drive indisponível":(week&&subjectId)?" · Enviando ao Drive...":""}`:
+               pdfOk===false?"Erro — adicione notas manuais":""}
+            </div>
           </div>
           <button onClick={pickPdf} style={{background:"none",border:"none",fontSize:11,color:"rgba(255,255,255,0.35)",cursor:"pointer",padding:4}}>trocar</button>
           <button onClick={()=>{setPdfFile(null);setPdfOk(null);setContent("");}} style={{background:"none",border:"none",fontSize:15,color:"rgba(247,106,106,0.5)",cursor:"pointer",padding:4}}>✕</button>
