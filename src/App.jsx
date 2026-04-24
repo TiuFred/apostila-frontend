@@ -314,13 +314,35 @@ function GenerateModal({open,onClose,subject,items,onSave}){
     setPdfLoading(false);
   };
 
+  const [driveLoading, setDriveLoading] = useState(false);
+  const [driveLink,    setDriveLink]    = useState("");
+
+  const uploadToDrive = async () => {
+    if (!result) return;
+    setDriveLoading(true); setDriveLink("");
+    try {
+      const r = await fetch(`${API}/upload-drive`, {
+        method: "POST", headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+          mode: result.mode,
+          subject: subject.name,
+          subject_color: subject.color,
+          weeks: selectedWeeks,
+          data: result.data
+        })
+      });
+      if (!r.ok) throw new Error(await r.text());
+      const d = await r.json();
+      setDriveLink(d.link);
+    } catch(e) { alert("Erro ao enviar para o Drive: " + e.message); }
+    setDriveLoading(false);
+  };
+
   const save=()=>{
     if(!result)return;
     onSave({mode:result.mode,title:`${MODES.find(m=>m.id===result.mode)?.label} — ${subject.name} (${selectedWeeks.join(", ")})`,data:result.data});
     onClose();
   };
-
-  return<Modal open={open} onClose={onClose} wide={phase==="done"}>
     {phase==="config"&&<>
       <h3 style={{margin:"0 0 4px",fontSize:16,fontWeight:700}}>Gerar material — {subject.name}</h3>
       <p style={{fontSize:12,color:"rgba(255,255,255,0.35)",marginBottom:16}}>Selecione as semanas e o tipo de material</p>
@@ -392,12 +414,20 @@ function GenerateModal({open,onClose,subject,items,onSave}){
           <h3 style={{margin:0,fontSize:15,fontWeight:700}}>{MODES.find(m=>m.id===result.mode)?.icon} {MODES.find(m=>m.id===result.mode)?.label}</h3>
           <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:2}}>{subject.name} · {selectedWeeks.join(", ")}</div>
         </div>
-        <div style={{display:"flex",gap:8}}>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
           <Btn onClick={save} color="#22C9A0" small>💾 Salvar</Btn>
           <Btn onClick={downloadPDF} disabled={pdfLoading} color={subject.color} small>{pdfLoading?<><Spinner size={12} color="#fff"/> Gerando...</>:"⬇ Baixar PDF"}</Btn>
+          <Btn onClick={uploadToDrive} disabled={driveLoading} color="#4FB8F7" small>{driveLoading?<><Spinner size={12} color="#fff"/> Enviando...</>:"📁 Enviar para Drive"}</Btn>
           <Btn onClick={()=>setPhase("config")} outline color="rgba(255,255,255,0.3)" small>← Voltar</Btn>
         </div>
       </div>
+      {driveLink&&<div style={{marginBottom:14,padding:"10px 14px",background:"rgba(75,184,247,0.1)",border:"0.5px solid rgba(75,184,247,0.3)",borderRadius:10,display:"flex",alignItems:"center",gap:10}}>
+        <span style={{fontSize:16}}>✅</span>
+        <div style={{flex:1}}>
+          <div style={{fontSize:12,fontWeight:600,color:"#4FB8F7",marginBottom:2}}>Enviado para o Google Drive!</div>
+          <a href={driveLink} target="_blank" rel="noreferrer" style={{fontSize:11,color:"rgba(75,184,247,0.7)"}}>Abrir no Drive →</a>
+        </div>
+      </div>}
       <ResultPreview mode={result.mode} data={result.data} color={subject.color}/>
     </>}
   </Modal>;
