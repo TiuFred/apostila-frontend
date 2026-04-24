@@ -667,53 +667,13 @@ function CalendarPage({events,onAddEvent,onDeleteEvent}){
 }
 
 // ── Main App ───────────────────────────────────────────────────────────────────
-// ── CreditsWidget ──────────────────────────────────────────────────────────────
-function CreditsWidget({credits,limit,onLimitChange}){
-  const [editing,setEditing]=useState(false);
-  const [draft,setDraft]=useState(String(limit));
-  const cost=credits?.total_cost||0;
-  const calls=credits?.calls||0;
-  const pct=limit>0?Math.min(100,(cost/limit)*100):0;
-  const barColor=pct<60?"#22C9A0":pct<85?"#F7A83E":"#F76A6A";
-  const saveLimit=()=>{const v=parseFloat(draft);if(!isNaN(v)&&v>0){onLimitChange(v);}setEditing(false);};
-  return<div style={{margin:"0 10px 8px",padding:"8px 10px",borderRadius:8,background:"rgba(255,255,255,0.04)",border:`0.5px solid ${pct>=100?"rgba(247,106,106,0.4)":"rgba(255,255,255,0.08)"}`}}>
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}}>
-      <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.04em"}}>Uso IA</div>
-      <button onClick={()=>{setDraft(String(limit));setEditing(e=>!e);}} style={{background:"none",border:"none",fontSize:10,color:"rgba(255,255,255,0.25)",cursor:"pointer"}}>⚙</button>
-    </div>
-    {editing?(
-      <div style={{display:"flex",gap:4,alignItems:"center",marginBottom:4}}>
-        <span style={{fontSize:10,color:"rgba(255,255,255,0.35)"}}>Limite $</span>
-        <input value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveLimit()}
-          style={{flex:1,padding:"3px 6px",borderRadius:5,border:"0.5px solid rgba(124,106,247,0.5)",background:"rgba(124,106,247,0.1)",color:"#e8e6ff",fontSize:12,boxSizing:"border-box",fontFamily:"'DM Sans',sans-serif",width:60}}
-          autoFocus type="number" min="1" step="1"/>
-        <button onClick={saveLimit} style={{background:"#7C6AF7",border:"none",borderRadius:5,color:"#fff",fontSize:11,padding:"3px 8px",cursor:"pointer"}}>OK</button>
-      </div>
-    ):(
-      <div style={{display:"flex",alignItems:"baseline",gap:4,marginBottom:5}}>
-        <span style={{fontSize:14,fontWeight:700,color:barColor}}>${cost.toFixed(4)}</span>
-        <span style={{fontSize:10,color:"rgba(255,255,255,0.25)"}}>/ ${Number(limit).toFixed(0)}</span>
-      </div>
-    )}
-    <div style={{height:4,borderRadius:4,background:"rgba(255,255,255,0.08)",overflow:"hidden",marginBottom:4}}>
-      <div style={{height:"100%",width:`${pct}%`,background:barColor,borderRadius:4,transition:"width 0.4s"}}/>
-    </div>
-    <div style={{display:"flex",justifyContent:"space-between"}}>
-      <span style={{fontSize:10,color:"rgba(255,255,255,0.25)"}}>{calls} geraç{calls===1?"ão":"ões"}</span>
-      <span style={{fontSize:10,color:pct>=100?"#F76A6A":"rgba(255,255,255,0.25)"}}>{pct>=100?"Limite atingido!":pct.toFixed(0)+"%"}</span>
-    </div>
-  </div>;
-}
-
 export default function App(){
   const [user,setUser]=useState(null);const [authLoading,setAuthLoading]=useState(true);
   const [subjects,setSubjects]=useState([]);const [items,setItems]=useState([]);
   const [calEvents,setCalEvents]=useState([]);const [savedMaterials,setSavedMaterials]=useState([]);
   const [activeId,setActiveId]=useState(null);const [page,setPage]=useState("subjects");
   const [modals,setModals]=useState({addItem:false,generate:false,saved:false});
-  const [toast,setToast]=useState("");const [backendOk,setBackendOk]=useState(null);const [credits,setCredits]=useState(null);
-  const [spendingLimit,setSpendingLimit]=useLocalStorage("spendingLimit",10);
-
+  const [toast,setToast]=useState("");const [backendOk,setBackendOk]=useState(null);
   const [loading,setLoading]=useState(false);
   const [search,setSearch]=useState("");
   const [sortBy,setSortBy]=useState("week"); // default sort by week
@@ -732,7 +692,6 @@ export default function App(){
     if(!user)return;
     seedAndLoad();
     fetch(`${API}/health`).then(r=>r.json()).then(()=>setBackendOk(true)).catch(()=>setBackendOk(false));
-    fetch(`${API}/credits`).then(r=>r.json()).then(d=>setCredits(d)).catch(()=>{});
   },[user]);
 
   const seedAndLoad=async()=>{
@@ -853,8 +812,9 @@ export default function App(){
 
         {backendOk===false&&<div style={{margin:"0 10px 8px",padding:"6px 10px",background:"rgba(247,106,106,0.15)",border:"0.5px solid rgba(247,106,106,0.3)",borderRadius:8,fontSize:11,color:"#F76A6A"}}>⚠ Backend offline</div>}
         {backendOk===true&&<div style={{margin:"0 10px 8px",padding:"4px 10px",background:"rgba(34,201,160,0.1)",borderRadius:8,fontSize:11,color:"#22C9A0"}}>● Online</div>}
-        {credits!=null&&<CreditsWidget credits={credits} limit={spendingLimit} onLimitChange={setSpendingLimit}/>}
-
+        <a href="https://drive.google.com/drive/u/0/folders/0APH2Y3zPPWOOUk9PVA" target="_blank" rel="noreferrer" style={{display:"block",width:"100%",padding:"7px 0",borderRadius:8,border:"0.5px solid rgba(75,184,247,0.3)",background:"rgba(75,184,247,0.07)",color:"#4FB8F7",fontSize:12,cursor:"pointer",textAlign:"center",textDecoration:"none",fontWeight:600}}>
+          📁 Abrir Google Drive
+        </a>
         <div style={{padding:"0 8px 6px"}}>
           {[{id:"subjects",label:"📚 Matérias"},{id:"calendar",label:"📅 Calendário",badge:upcomingCount}].map(nav=>(
             <button key={nav.id} onClick={()=>setPage(nav.id)} style={{width:"100%",padding:"8px 10px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",gap:8,background:page===nav.id?"rgba(255,255,255,0.07)":"transparent",border:"none",color:"rgba(255,255,255,0.75)",fontSize:13,fontWeight:page===nav.id?600:400,marginBottom:2,textAlign:"left"}}>
