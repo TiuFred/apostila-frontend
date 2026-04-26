@@ -604,18 +604,21 @@ function SavedModal({open,onClose,materials,onDelete,subjects}){
   </>;
 }
 
+const CALENDAR_SUBJECTS = ["Programação","UX","Orientação","Liderança","Negócios","Matemática","Recuperação","Outro"];
+
 function AddEventModal({open,onClose,onAdd,defaultDate}){
   const [title,setTitle]=useState("");const [date,setDate]=useState(defaultDate||"");
   const [type,setType]=useState("prova");const [subject,setSubject]=useState("");const [time,setTime]=useState("");
   useEffect(()=>{if(open){setDate(defaultDate||"");setTitle("");setTime("");setType("prova");setSubject("");}},[open,defaultDate]);
-  const submit=()=>{if(!title.trim()||!date)return;onAdd({title:title.trim(),date,type,subject:subject.trim(),time});onClose();};
+  const submit=()=>{if(!title.trim()||!date)return;onAdd({title:title.trim(),date,type,subject,time});onClose();};
   const et=EVENT_TYPES.find(e=>e.id===type);
   return<Modal open={open} onClose={onClose}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
       <h3 style={{margin:0,fontSize:16,fontWeight:700}}>Novo evento</h3>
       <button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,0.3)",cursor:"pointer",fontSize:18}}>✕</button>
     </div>
-    <div style={{marginBottom:14}}><Label text="Tipo"/>
+    <div style={{marginBottom:14}}>
+      <Label text="Tipo"/>
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
         {EVENT_TYPES.map(e=><button key={e.id} onClick={()=>setType(e.id)} style={{padding:"6px 12px",borderRadius:20,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:5,border:`0.5px solid ${type===e.id?e.color:"rgba(255,255,255,0.12)"}`,background:type===e.id?e.color+"22":"transparent",color:type===e.id?e.color:"rgba(255,255,255,0.5)",fontWeight:type===e.id?600:400}}><span>{e.icon}</span>{e.label}</button>)}
       </div>
@@ -625,7 +628,16 @@ function AddEventModal({open,onClose,onAdd,defaultDate}){
       <div><Label text="Data" required/><input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{...IS,colorScheme:"dark"}}/></div>
       <div><Label text="Horário"/><input type="time" value={time} onChange={e=>setTime(e.target.value)} style={{...IS,colorScheme:"dark"}}/></div>
     </div>
-    <div style={{marginBottom:18}}><Label text="Matéria (opcional)"/><input value={subject} onChange={e=>setSubject(e.target.value)} placeholder="Ex: Programação" style={IS}/></div>
+    <div style={{marginBottom:18}}>
+      <Label text="Matéria"/>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {CALENDAR_SUBJECTS.map(s=>(
+          <button key={s} onClick={()=>setSubject(subject===s?"":s)} style={{padding:"4px 10px",borderRadius:20,fontSize:11,cursor:"pointer",border:`0.5px solid ${subject===s?"rgba(124,106,247,0.6)":"rgba(255,255,255,0.1)"}`,background:subject===s?"rgba(124,106,247,0.2)":"transparent",color:subject===s?"#c4bbff":"rgba(255,255,255,0.45)",fontWeight:subject===s?600:400}}>
+            {subject===s?"✓ ":""}{s}
+          </button>
+        ))}
+      </div>
+    </div>
     <div style={{display:"flex",gap:8}}>
       <Btn onClick={onClose} outline color="rgba(255,255,255,0.25)" full>Cancelar</Btn>
       <Btn onClick={submit} disabled={!title.trim()||!date} color={et?.color||"#7C6AF7"} full>Adicionar evento</Btn>
@@ -635,17 +647,54 @@ function AddEventModal({open,onClose,onAdd,defaultDate}){
 
 function CalendarPage({events,onAddEvent,onDeleteEvent}){
   const today=new Date();
-  const [curYear,setCurYear]=useState(today.getFullYear());const [curMonth,setCurMonth]=useState(today.getMonth());
-  const [addModal,setAddModal]=useState(false);const [clickedDate,setClickedDate]=useState("");const [confirm,setConfirm]=useState(null);
+  const [curYear,setCurYear]=useState(today.getFullYear());
+  const [curMonth,setCurMonth]=useState(today.getMonth());
+  const [addModal,setAddModal]=useState(false);
+  const [clickedDate,setClickedDate]=useState("");
+  const [confirm,setConfirm]=useState(null);
+  const [panel,setPanel]=useState("upcoming"); // "upcoming" | "past"
+
   const prevMonth=()=>{if(curMonth===0){setCurMonth(11);setCurYear(y=>y-1);}else setCurMonth(m=>m-1);};
   const nextMonth=()=>{if(curMonth===11){setCurMonth(0);setCurYear(y=>y+1);}else setCurMonth(m=>m+1);};
-  const firstDay=new Date(curYear,curMonth,1).getDay();const daysInMonth=new Date(curYear,curMonth+1,0).getDate();
+  const firstDay=new Date(curYear,curMonth,1).getDay();
+  const daysInMonth=new Date(curYear,curMonth+1,0).getDate();
   const cells=Array(firstDay).fill(null).concat(Array.from({length:daysInMonth},(_,i)=>i+1));
   while(cells.length%7!==0)cells.push(null);
-  const eventsOnDay=day=>{if(!day)return[];const ds=`${curYear}-${String(curMonth+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;return events.filter(e=>e.date===ds);};
+
+  const eventsOnDay=day=>{
+    if(!day)return[];
+    const ds=`${curYear}-${String(curMonth+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+    return events.filter(e=>e.date===ds);
+  };
   const isToday=day=>day&&today.getDate()===day&&today.getMonth()===curMonth&&today.getFullYear()===curYear;
-  const upcoming=[...events].filter(e=>new Date(e.date+"T00:00:00")>=new Date(today.toDateString())).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,8);
+
+  const todayStr=today.toISOString().slice(0,10);
+  const upcoming=[...events].filter(e=>e.date>=todayStr).sort((a,b)=>a.date.localeCompare(b.date));
+  const past=[...events].filter(e=>e.date<todayStr).sort((a,b)=>b.date.localeCompare(a.date));
+
+  const EventCard=({ev,isPast})=>{
+    const et=EVENT_TYPES.find(e=>e.id===ev.type);
+    const d=new Date(ev.date+"T00:00:00");
+    const daysLeft=Math.ceil((d-new Date(today.toDateString()))/(1000*60*60*24));
+    const daysAgo=Math.abs(daysLeft);
+    return<div style={{marginBottom:8,padding:"10px 12px",borderRadius:8,background:isPast?"rgba(255,255,255,0.02)":"rgba(255,255,255,0.04)",border:`0.5px solid ${isPast?"rgba(255,255,255,0.06)":et?.color+"33"}`,position:"relative",opacity:isPast?0.7:1}}>
+      <button onClick={()=>setConfirm(ev.id)} style={{position:"absolute",top:6,right:6,background:"none",border:"none",color:"rgba(255,255,255,0.15)",cursor:"pointer",fontSize:11,lineHeight:1}} onMouseEnter={e=>e.currentTarget.style.color="rgba(247,106,106,0.6)"} onMouseLeave={e=>e.currentTarget.style.color="rgba(255,255,255,0.15)"}>✕</button>
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}><span style={{fontSize:13}}>{et?.icon}</span><span style={{fontSize:11,color:et?.color,fontWeight:600}}>{et?.label}</span></div>
+      <div style={{fontSize:12,fontWeight:500,color:"rgba(255,255,255,0.85)",marginBottom:3,paddingRight:16}}>{ev.title}</div>
+      {ev.subject&&<div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginBottom:3}}>{ev.subject}</div>}
+      {ev.created_by_name&&<div style={{fontSize:10,color:"rgba(255,255,255,0.25)",marginBottom:3}}>por {ev.created_by_name}</div>}
+      <div style={{fontSize:10,color:"rgba(255,255,255,0.4)"}}>
+        {d.toLocaleDateString("pt-BR",{day:"2-digit",month:"short",year:"numeric"})}{ev.time&&` · ${ev.time}`}
+        {isPast
+          ? <span style={{marginLeft:6,padding:"1px 6px",borderRadius:10,fontSize:9,fontWeight:700,background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.3)"}}>{daysAgo===0?"Hoje":`${daysAgo}d atrás`}</span>
+          : <span style={{marginLeft:6,padding:"1px 6px",borderRadius:10,fontSize:9,fontWeight:700,background:daysLeft===0?"rgba(247,106,106,0.2)":daysLeft<=3?"rgba(247,168,62,0.2)":"rgba(34,201,160,0.1)",color:daysLeft===0?"#F76A6A":daysLeft<=3?"#F7A83E":"#22C9A0"}}>{daysLeft===0?"Hoje":`${daysLeft}d`}</span>
+        }
+      </div>
+    </div>;
+  };
+
   return<><div style={{display:"flex",flex:1,overflow:"hidden"}}>
+    {/* Calendar grid */}
     <div style={{flex:1,overflowY:"auto",padding:24}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
         <h2 style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:20,fontWeight:600}}>{MONTH_NAMES[curMonth]} {curYear}</h2>
@@ -678,23 +727,30 @@ function CalendarPage({events,onAddEvent,onDeleteEvent}){
         {EVENT_TYPES.map(e=><div key={e.id} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"rgba(255,255,255,0.4)"}}><div style={{width:8,height:8,borderRadius:"50%",background:e.color}}/>{e.label}</div>)}
       </div>
     </div>
-    <div style={{width:240,borderLeft:"0.5px solid rgba(255,255,255,0.07)",padding:16,overflowY:"auto",flexShrink:0}}>
-      <div style={{fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.3)",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:12}}>Próximos eventos</div>
-      {upcoming.length===0&&<div style={{fontSize:12,color:"rgba(255,255,255,0.2)",textAlign:"center",padding:"20px 0"}}>Nenhum evento futuro</div>}
-      {upcoming.map(ev=>{const et=EVENT_TYPES.find(e=>e.id===ev.type);const d=new Date(ev.date+"T00:00:00");const daysLeft=Math.ceil((d-new Date(today.toDateString()))/(1000*60*60*24));
-        return<div key={ev.id} style={{marginBottom:8,padding:"10px 12px",borderRadius:8,background:"rgba(255,255,255,0.04)",border:`0.5px solid ${et?.color}33`,position:"relative"}}>
-          <button onClick={()=>setConfirm(ev.id)} style={{position:"absolute",top:6,right:6,background:"none",border:"none",color:"rgba(255,255,255,0.15)",cursor:"pointer",fontSize:11,lineHeight:1}} onMouseEnter={e=>e.currentTarget.style.color="rgba(247,106,106,0.6)"} onMouseLeave={e=>e.currentTarget.style.color="rgba(255,255,255,0.15)"}>✕</button>
-          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}><span style={{fontSize:14}}>{et?.icon}</span><span style={{fontSize:11,color:et?.color,fontWeight:600}}>{et?.label}</span></div>
-          <div style={{fontSize:12,fontWeight:500,color:"rgba(255,255,255,0.85)",marginBottom:3,paddingRight:16}}>{ev.title}</div>
-          {ev.subject&&<div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginBottom:3}}>{ev.subject}</div>}
-          {ev.created_by_name&&<div style={{fontSize:10,color:"rgba(255,255,255,0.25)",marginBottom:3}}>por {ev.created_by_name}</div>}
-          <div style={{fontSize:10,color:"rgba(255,255,255,0.4)"}}>
-            {d.toLocaleDateString("pt-BR",{day:"2-digit",month:"short"})}{ev.time&&` · ${ev.time}`}
-            <span style={{marginLeft:6,padding:"1px 6px",borderRadius:10,fontSize:9,fontWeight:700,background:daysLeft===0?"rgba(247,106,106,0.2)":daysLeft<=3?"rgba(247,168,62,0.2)":"rgba(34,201,160,0.1)",color:daysLeft===0?"#F76A6A":daysLeft<=3?"#F7A83E":"#22C9A0"}}>{daysLeft===0?"Hoje":`${daysLeft}d`}</span>
-          </div>
-        </div>;
-      })}
+
+    {/* Right panel */}
+    <div style={{width:250,borderLeft:"0.5px solid rgba(255,255,255,0.07)",display:"flex",flexDirection:"column",flexShrink:0}}>
+      {/* Tab toggle */}
+      <div style={{display:"flex",borderBottom:"0.5px solid rgba(255,255,255,0.07)",flexShrink:0}}>
+        {[{id:"upcoming",label:`Próximos (${upcoming.length})`},{id:"past",label:`Passados (${past.length})`}].map(tab=>(
+          <button key={tab.id} onClick={()=>setPanel(tab.id)} style={{flex:1,padding:"12px 8px",border:"none",background:"transparent",fontSize:11,fontWeight:panel===tab.id?600:400,color:panel===tab.id?"#7C6AF7":"rgba(255,255,255,0.3)",cursor:"pointer",borderBottom:panel===tab.id?"2px solid #7C6AF7":"2px solid transparent",transition:"all 0.15s"}}>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{flex:1,overflowY:"auto",padding:12}}>
+        {panel==="upcoming"&&<>
+          {upcoming.length===0&&<div style={{fontSize:12,color:"rgba(255,255,255,0.2)",textAlign:"center",padding:"20px 0"}}>Nenhum evento futuro</div>}
+          {upcoming.map(ev=><EventCard key={ev.id} ev={ev} isPast={false}/>)}
+        </>}
+        {panel==="past"&&<>
+          {past.length===0&&<div style={{fontSize:12,color:"rgba(255,255,255,0.2)",textAlign:"center",padding:"20px 0"}}>Nenhum evento passado</div>}
+          {past.map(ev=><EventCard key={ev.id} ev={ev} isPast={true}/>)}
+        </>}
+      </div>
     </div>
+
     <AddEventModal open={addModal} onClose={()=>setAddModal(false)} onAdd={onAddEvent} defaultDate={clickedDate}/>
   </div>
   <ConfirmModal open={!!confirm} onClose={()=>setConfirm(null)} onConfirm={()=>{onDeleteEvent(confirm);setConfirm(null);}} title="Remover evento?" message="Tem certeza que quer remover este evento?" danger/>
