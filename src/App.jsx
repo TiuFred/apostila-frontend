@@ -758,6 +758,312 @@ function CalendarPage({events,onAddEvent,onDeleteEvent}){
 }
 
 // ── Main App ───────────────────────────────────────────────────────────────────
+// ── GradesPage ────────────────────────────────────────────────────────────────
+const TIPO_COLORS = {Ponderada:"#7C6AF7",Artefato:"#22C9A0",Prova:"#F76A6A",Aula:"#4FB8F7",Grupo:"#F7A83E"};
+const ICON_MAP = {"chalkboard-user-solido":"Aula","book-open-reader-solido":"Ponderada","square-code-solido":"Artefato","user-pen-solido":"Grupo","scroll-torah-solido":"Prova","scroll-old-solido":"Prova","user-group-solido":"Prova"};
+const DEFAULT_SIM = {notaAssumida:7,notaAssumidaPonderada:7,notaAssumidaArtefato:7,manterAteOMomento:true,metaFinal:7};
+const LETRAS = ["A","B","C","D","E"];
+const DEFAULT_MULT = {A:1.05,B:1.0,C:0.95,D:0.9,E:0.85};
+
+function fmtN(v,d=2){if(v===null||v===undefined)return"—";return Number(v).toFixed(d);}
+function fmtP(v){return(v*100).toFixed(0)+"%";}
+
+function calcMetricas(items,sim){
+  const byTipo=(tipo)=>items.filter(i=>i.tipo===tipo);
+  const acByTipo=(tipo)=>byTipo(tipo).reduce((a,i)=>a+i.peso*(i.nota??0),0);
+  const mediaByTipo=(tipo)=>{
+    const f=byTipo(tipo).filter(i=>i.nota!==null);
+    const sp=f.reduce((a,i)=>a+i.peso,0);
+    if(!sp)return null;
+    return f.reduce((a,i)=>a+i.peso*(i.nota??0),0)/sp;
+  };
+  const acP=acByTipo("Ponderada"),acA=acByTipo("Artefato"),acAu=acByTipo("Aula"),acG=acByTipo("Grupo"),acPr=acByTipo("Prova");
+  const acTotal=acP+acA+acAu+acG+acPr;
+  const avalDados=items.filter(i=>i.nota!==null);
+  const spAv=avalDados.reduce((a,i)=>a+i.peso,0);
+  const mediaTotal=spAv?avalDados.reduce((a,i)=>a+i.peso*(i.nota??0),0)/spAv:null;
+  const pesoProva=byTipo("Prova").reduce((a,i)=>a+i.peso,0);
+  const media=mediaTotal??sim.notaAssumida;
+  const somaSemProva=items.reduce((a,item)=>{
+    if(item.tipo==="Prova")return a;
+    const n=item.nota!==null?item.nota:sim.manterAteOMomento?media:(item.tipo==="Ponderada"?sim.notaAssumidaPonderada:item.tipo==="Artefato"?sim.notaAssumidaArtefato:sim.notaAssumida);
+    return a+item.peso*n;
+  },0);
+  const notaProvaRaw=pesoProva?(sim.metaFinal-somaSemProva)/pesoProva:0;
+  const notaProva=Math.max(0,Math.min(10,notaProvaRaw));
+  const provaStatus=notaProvaRaw<=0?"aprovado":notaProvaRaw>10?"impossivel":notaProvaRaw>7?"exigente":"aprovado";
+  const finalProj=items.reduce((a,item)=>{
+    const n=item.tipo==="Prova"?notaProva:item.nota!==null?item.nota:sim.manterAteOMomento?media:(item.tipo==="Ponderada"?sim.notaAssumidaPonderada:item.tipo==="Artefato"?sim.notaAssumidaArtefato:sim.notaAssumida);
+    return a+item.peso*n;
+  },0);
+  const naoAv=items.filter(i=>i.nota===null).reduce((a,i)=>a+i.peso,0);
+  const pesosPorTipo={};
+  items.forEach(i=>{pesosPorTipo[i.tipo]=(pesosPorTipo[i.tipo]||0)+i.peso;});
+  return {acP,acA,acAu,acG,acPr,acTotal,mediaP:mediaByTipo("Ponderada"),mediaA:mediaByTipo("Artefato"),mediaAu:mediaByTipo("Aula"),mediaG:mediaByTipo("Grupo"),mediaPr:mediaByTipo("Prova"),mediaTotal,notaProva,provaStatus,finalProj,naoAv,pesosPorTipo};
+}
+
+function parseHtml(html){
+  try{
+    const parser=new DOMParser();
+    const doc=parser.parseFromString(html,"text/html");
+    const rows=doc.querySelectorAll("tr");
+    const items=[];
+    rows.forEach(row=>{
+      const iconEl=row.querySelector("[data-src]");
+      const iconSrc=iconEl?.getAttribute("data-src")||"";
+      const iconName=(iconSrc.match(/\/([a-zA-Z0-9-]+)\.svg$/)||[])[1]||"";
+      const tipo=ICON_MAP[iconName]||"";
+      const nomeEl=row.querySelector("[class*='caption-activity']");
+      const nome=nomeEl?.textContent?.trim()||"";
+      if(!nome)return;
+      const semanaEl=row.querySelector("[data-label='Semana'] span");
+      const pontosEl=row.querySelector("[data-label='Pontos'] span");
+      const notaEl=row.querySelector("[data-label='Notas'] span");
+      const semanaNum=parseInt(semanaEl?.textContent?.trim()||"0");
+      const semana=semanaNum?"S"+semanaNum:"";
+      const pontosRaw=parseFloat((pontosEl?.textContent||"0").replace(",","."));
+      const peso=isNaN(pontosRaw)?0:pontosRaw/100;
+      const notaText=(notaEl?.textContent||"").replace(",",".").trim();
+      const nota=(notaText==="-"||notaText==="")?null:parseFloat(notaText);
+      items.push({id:`imp-${Math.random()}`,semana,tipo,atividade:nome,peso,nota:isNaN(nota)?null:nota,origem:"importado",matchStatus:"matched"});
+    });
+    const studentEl=doc.querySelector("[class*='student-name'],[class*='studentName']");
+    const studentName=studentEl?.textContent?.trim()||null;
+    return{items:items.filter(i=>i.peso>0),studentName};
+  }catch{return{items:[],studentName:null};}
+}
+
+function GradesPage(){
+  const STORE_KEY="apostila-grades-state";
+  const loadG=()=>{try{const s=localStorage.getItem(STORE_KEY);return s?JSON.parse(s):null;}catch{return null;}};
+  const saveG=(s)=>{try{localStorage.setItem(STORE_KEY,JSON.stringify(s));}catch{}};
+
+  const init=loadG()||{items:[],sim:DEFAULT_SIM,studentName:null,participacao:"B",multipliers:DEFAULT_MULT};
+  const [items,setItemsRaw]=useState(init.items);
+  const [sim,setSimRaw]=useState(init.sim||DEFAULT_SIM);
+  const [studentName,setStudentName]=useState(init.studentName);
+  const [participacao,setPartRaw]=useState(init.participacao||"B");
+  const [multipliers,setMultRaw]=useState(init.multipliers||DEFAULT_MULT);
+  const [err,setErr]=useState("");
+  const [tab,setTab]=useState("dashboard"); // dashboard | table
+  const [semFilter,setSemFilter]=useState("");
+  const [showSlider,setShowSlider]=useState(false);
+  const [showMultCfg,setShowMultCfg]=useState(false);
+  const fileRef=useCallback(node=>{if(node)node.value="";},[]);
+
+  const persist=(patch)=>{const next={items,sim,studentName,participacao,multipliers,...patch};saveG(next);};
+  const setItems=(v)=>{setItemsRaw(v);persist({items:v});};
+  const setSim=(v)=>{setSimRaw(v);persist({sim:v});};
+  const setPart=(v)=>{setPartRaw(v);persist({participacao:v});};
+  const setMult=(v)=>{setMultRaw(v);persist({multipliers:v});};
+
+  const handleFile=async(file)=>{
+    if(!file)return;
+    setErr("");
+    const text=await file.text();
+    const{items:parsed,studentName:sn}=parseHtml(text);
+    if(!parsed.length){setErr("Nenhuma atividade encontrada. Verifique se exportou a página de Notas do Adalove.");return;}
+    setItemsRaw(parsed);setStudentName(sn);persist({items:parsed,studentName:sn});
+  };
+
+  const updateNota=(id,nota)=>{
+    const next=items.map(i=>i.id===id?{...i,nota}:i);
+    setItems(next);
+  };
+
+  const m=items.length?calcMetricas(items,sim):null;
+  const mult=multipliers[participacao]||1;
+  const notaComPart=m?m.finalProj*mult:null;
+  const semanas=[...new Set(items.map(i=>i.semana).filter(Boolean))].sort((a,b)=>parseInt(a.slice(1))-parseInt(b.slice(1)));
+  const filtered=items.filter(i=>!semFilter||i.semana===semFilter);
+
+  const provaColor=m?.provaStatus==="aprovado"?"#22C9A0":m?.provaStatus==="exigente"?"#F7A83E":"#F76A6A";
+  const provaLabel=m?.provaStatus==="aprovado"?"Cenário confortável":m?.provaStatus==="exigente"?"Nota alta necessária":"Acima de 10 — improvável";
+
+  return<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"#0e0e1a"}}>
+    {/* Header */}
+    <div style={{padding:"14px 24px",borderBottom:"0.5px solid rgba(255,255,255,0.07)",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+      <h1 style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:17,fontWeight:600,flex:1}}>🎓 Calculadora de Notas</h1>
+      {studentName&&<span style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>👤 {studentName}</span>}
+      <label style={{background:"#7C6AF7",color:"#fff",padding:"7px 14px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer"}}>
+        📥 Importar HTML
+        <input type="file" accept=".html,.htm" style={{display:"none"}} onChange={e=>handleFile(e.target.files?.[0])}/>
+      </label>
+      {items.length>0&&<button onClick={()=>{setItemsRaw([]);setStudentName(null);persist({items:[],studentName:null});}} style={{background:"none",border:"0.5px solid rgba(247,106,106,0.3)",borderRadius:8,color:"rgba(247,106,106,0.6)",fontSize:11,padding:"6px 10px",cursor:"pointer"}}>Limpar</button>}
+    </div>
+
+    {err&&<div style={{margin:"12px 24px",padding:"10px 14px",background:"rgba(247,106,106,0.1)",border:"0.5px solid rgba(247,106,106,0.3)",borderRadius:8,fontSize:12,color:"#F76A6A"}}>{err}</div>}
+
+    {/* Empty state */}
+    {!items.length&&<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{textAlign:"center",maxWidth:480,padding:24}}>
+        <div style={{fontSize:48,marginBottom:16}}>📊</div>
+        <h2 style={{fontSize:18,fontWeight:600,marginBottom:12}}>Importe suas notas do Adalove</h2>
+        <p style={{fontSize:13,color:"rgba(255,255,255,0.5)",lineHeight:1.7,marginBottom:20}}>
+          Acesse o <strong>Adalove</strong> → página <strong>Notas</strong> → salve como HTML (<kbd style={{background:"rgba(255,255,255,0.1)",padding:"1px 6px",borderRadius:4}}>Ctrl+S</kbd>) → importe aqui.
+        </p>
+        <div style={{padding:"16px",background:"rgba(124,106,247,0.08)",border:"0.5px solid rgba(124,106,247,0.2)",borderRadius:10,fontSize:12,color:"rgba(255,255,255,0.5)",lineHeight:1.7,textAlign:"left"}}>
+          <strong style={{color:"#7C6AF7"}}>Passos:</strong><br/>
+          1. Acesse adalove.inteli.edu.br → Notas<br/>
+          2. Aguarde carregar todas as atividades<br/>
+          3. Salve: <strong>Ctrl+S</strong> → "Página da Web completa"<br/>
+          4. Clique em "Importar HTML" acima
+        </div>
+      </div>
+    </div>}
+
+    {/* Dashboard */}
+    {items.length>0&&m&&<div style={{flex:1,overflowY:"auto",padding:24}}>
+      {/* Tabs */}
+      <div style={{display:"flex",gap:4,marginBottom:20}}>
+        {[{id:"dashboard",label:"📊 Dashboard"},{id:"table",label:"📋 Atividades"}].map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{padding:"6px 16px",borderRadius:8,border:`0.5px solid ${tab===t.id?"#7C6AF7":"rgba(255,255,255,0.1)"}`,background:tab===t.id?"rgba(124,106,247,0.15)":"transparent",color:tab===t.id?"#c4bbff":"rgba(255,255,255,0.5)",fontSize:12,fontWeight:tab===t.id?600:400,cursor:"pointer"}}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab==="dashboard"&&<>
+        {/* Metrics row */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:10,marginBottom:16}}>
+          {[
+            {label:"Total acumulado",value:fmtN(m.acTotal,3),sub:"/ "+fmtN(Object.values(m.pesosPorTipo).reduce((a,b)=>a+b,0)*10,1)+" pts"},
+            {label:"Média atual",value:fmtN(m.mediaTotal),sub:"até o momento"},
+            {label:"Ponderadas",value:fmtN(m.acP,3),sub:m.mediaP!==null?`média ${fmtN(m.mediaP)}`:"sem notas"},
+            {label:"Artefatos",value:fmtN(m.acA,3),sub:m.mediaA!==null?`média ${fmtN(m.mediaA)}`:"sem notas"},
+            {label:"Prova",value:fmtN(m.acPr,3),sub:m.mediaPr!==null?`média ${fmtN(m.mediaPr)}`:"sem notas"},
+          ].map((card,i)=><div key={i} style={{padding:"12px 14px",background:"rgba(255,255,255,0.04)",borderRadius:10,border:"0.5px solid rgba(255,255,255,0.08)"}}>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.04em"}}>{card.label}</div>
+            <div style={{fontSize:20,fontWeight:700,color:"#e8e6ff",marginBottom:2}}>{card.value}</div>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>{card.sub}</div>
+          </div>)}
+        </div>
+
+        {/* Simulation panel */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+          {/* Left: assumptions */}
+          <div style={{padding:"16px",background:"rgba(255,255,255,0.04)",borderRadius:10,border:"0.5px solid rgba(255,255,255,0.08)"}}>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginBottom:10,textTransform:"uppercase",letterSpacing:"0.04em"}}>Simulação</div>
+            <div style={{display:"flex",gap:6,marginBottom:12}}>
+              {[{v:false,l:"Nota fixa"},{v:true,l:"Manter média"}].map(opt=>(
+                <button key={String(opt.v)} onClick={()=>setSim({...sim,manterAteOMomento:opt.v})} style={{flex:1,padding:"5px 0",borderRadius:6,border:`0.5px solid ${sim.manterAteOMomento===opt.v?"#7C6AF7":"rgba(255,255,255,0.1)"}`,background:sim.manterAteOMomento===opt.v?"rgba(124,106,247,0.2)":"transparent",color:sim.manterAteOMomento===opt.v?"#c4bbff":"rgba(255,255,255,0.4)",fontSize:11,cursor:"pointer"}}>
+                  {opt.l}
+                </button>
+              ))}
+            </div>
+            {!sim.manterAteOMomento&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+              {[{label:"Ponderadas",key:"notaAssumidaPonderada",color:"#7C6AF7"},{label:"Artefatos",key:"notaAssumidaArtefato",color:"#22C9A0"}].map(f=>(
+                <div key={f.key}>
+                  <div style={{fontSize:10,color:f.color,marginBottom:3}}>{f.label}</div>
+                  <input type="number" min="0" max="10" step="0.1" value={sim[f.key]} onChange={e=>setSim({...sim,[f.key]:parseFloat(e.target.value)||0})}
+                    style={{...{width:"100%",padding:"5px 8px",borderRadius:6,border:"0.5px solid rgba(255,255,255,0.12)",background:"rgba(255,255,255,0.06)",color:"#e8e6ff",fontSize:13,boxSizing:"border-box"}}}/>
+                </div>
+              ))}
+            </div>}
+            {/* Participação */}
+            <div style={{marginBottom:12}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:"0.04em"}}>Participação</div>
+                <button onClick={()=>setShowMultCfg(v=>!v)} style={{background:"none",border:"none",fontSize:10,color:"rgba(255,255,255,0.3)",cursor:"pointer"}}>⚙</button>
+              </div>
+              <div style={{display:"flex",gap:4}}>
+                {LETRAS.map(l=><button key={l} onClick={()=>setPart(l)} style={{flex:1,padding:"5px 0",borderRadius:6,border:`0.5px solid ${participacao===l?"#F7A83E":"rgba(255,255,255,0.1)"}`,background:participacao===l?"rgba(247,168,62,0.2)":"transparent",color:participacao===l?"#F7A83E":"rgba(255,255,255,0.4)",fontSize:12,fontWeight:participacao===l?700:400,cursor:"pointer"}}>{l}</button>)}
+              </div>
+              {showMultCfg&&<div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:4,marginTop:6}}>
+                {LETRAS.map(l=><div key={l}>
+                  <div style={{fontSize:9,color:"rgba(255,255,255,0.3)",textAlign:"center",marginBottom:2}}>{l}</div>
+                  <input type="number" step="0.01" value={multipliers[l]} onChange={e=>setMult({...multipliers,[l]:parseFloat(e.target.value)||1})}
+                    style={{width:"100%",padding:"3px 4px",borderRadius:4,border:"0.5px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.06)",color:"#e8e6ff",fontSize:10,boxSizing:"border-box",textAlign:"center"}}/>
+                </div>)}
+              </div>}
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:11}}>
+              <span style={{color:"rgba(255,255,255,0.4)"}}>Projeção final</span>
+              <span style={{fontWeight:700,color:"#e8e6ff"}}>{fmtN(m.finalProj)}</span>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginTop:4}}>
+              <span style={{color:"rgba(255,255,255,0.4)"}}>Com participação {participacao} ({mult>1?"+":""}{ ((mult-1)*100).toFixed(0)}%)</span>
+              <span style={{fontWeight:700,color:"#F7A83E"}}>{fmtN(notaComPart)}</span>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginTop:4}}>
+              <span style={{color:"rgba(255,255,255,0.4)"}}>Não avaliado</span>
+              <span style={{color:"rgba(255,255,255,0.5)"}}>{fmtP(m.naoAv)}</span>
+            </div>
+          </div>
+
+          {/* Right: prova */}
+          <div style={{padding:"16px",background:"rgba(255,255,255,0.04)",borderRadius:10,border:"0.5px solid rgba(255,255,255,0.08)"}}>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginBottom:10,textTransform:"uppercase",letterSpacing:"0.04em"}}>Meta final</div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+              <span style={{fontSize:22,fontWeight:700,color:"#e8e6ff"}}>{sim.metaFinal.toFixed(1)}</span>
+              <button onClick={()=>setShowSlider(v=>!v)} style={{background:"none",border:"0.5px solid rgba(255,255,255,0.1)",borderRadius:6,color:"rgba(255,255,255,0.4)",fontSize:11,padding:"4px 8px",cursor:"pointer"}}>✏️ Editar</button>
+            </div>
+            {showSlider&&<input type="range" min="0" max="10" step="0.5" value={sim.metaFinal} onChange={e=>setSim({...sim,metaFinal:parseFloat(e.target.value)})}
+              style={{width:"100%",marginBottom:12,accentColor:"#7C6AF7"}}/>}
+
+            <div style={{borderTop:"0.5px solid rgba(255,255,255,0.08)",paddingTop:12,marginTop:4}}>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginBottom:6}}>Nota necessária na prova</div>
+              <div style={{fontSize:28,fontWeight:700,color:provaColor,marginBottom:4}}>{fmtN(m.notaProva)}</div>
+              <div style={{fontSize:12,color:provaColor}}>{provaLabel}</div>
+            </div>
+
+            <div style={{borderTop:"0.5px solid rgba(255,255,255,0.08)",paddingTop:12,marginTop:12}}>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginBottom:8}}>Distribuição de pesos</div>
+              {Object.entries(m.pesosPorTipo).map(([tipo,peso])=>(
+                <div key={tipo} style={{marginBottom:6}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                    <span style={{fontSize:11,color:TIPO_COLORS[tipo]||"rgba(255,255,255,0.5)"}}>{tipo}</span>
+                    <span style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>{fmtP(peso)}</span>
+                  </div>
+                  <div style={{height:4,borderRadius:4,background:"rgba(255,255,255,0.06)"}}>
+                    <div style={{height:"100%",width:fmtP(peso),background:TIPO_COLORS[tipo]||"#7C6AF7",borderRadius:4}}/>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </>}
+
+      {tab==="table"&&<>
+        {/* Filters */}
+        <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+          <button onClick={()=>setSemFilter("")} style={{padding:"4px 10px",borderRadius:20,fontSize:11,cursor:"pointer",border:`0.5px solid ${!semFilter?"#7C6AF7":"rgba(255,255,255,0.1)"}`,background:!semFilter?"rgba(124,106,247,0.2)":"transparent",color:!semFilter?"#c4bbff":"rgba(255,255,255,0.4)"}}>Todas</button>
+          {semanas.map(s=><button key={s} onClick={()=>setSemFilter(s)} style={{padding:"4px 10px",borderRadius:20,fontSize:11,cursor:"pointer",border:`0.5px solid ${semFilter===s?"#7C6AF7":"rgba(255,255,255,0.1)"}`,background:semFilter===s?"rgba(124,106,247,0.2)":"transparent",color:semFilter===s?"#c4bbff":"rgba(255,255,255,0.4)"}}>{s}</button>)}
+        </div>
+        {/* Table */}
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+            <thead>
+              <tr style={{borderBottom:"0.5px solid rgba(255,255,255,0.08)"}}>
+                {["Sem.","Tipo","Atividade","Peso","Nota"].map(h=><th key={h} style={{padding:"6px 10px",textAlign:"left",fontSize:10,color:"rgba(255,255,255,0.35)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.04em",whiteSpace:"nowrap"}}>{h}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(item=>(
+                <tr key={item.id} style={{borderBottom:"0.5px solid rgba(255,255,255,0.04)",opacity:item.nota===null?0.6:1}}>
+                  <td style={{padding:"7px 10px",color:"rgba(255,255,255,0.5)",fontFamily:"monospace",whiteSpace:"nowrap"}}>{item.semana}</td>
+                  <td style={{padding:"7px 10px"}}>
+                    <span style={{padding:"2px 7px",borderRadius:12,border:`0.5px solid ${TIPO_COLORS[item.tipo]||"rgba(255,255,255,0.15)"}`,color:TIPO_COLORS[item.tipo]||"rgba(255,255,255,0.5)",fontSize:10,whiteSpace:"nowrap"}}>{item.tipo||"—"}</span>
+                  </td>
+                  <td style={{padding:"7px 10px",color:"rgba(255,255,255,0.85)",maxWidth:300}}>{item.atividade}</td>
+                  <td style={{padding:"7px 10px",color:"rgba(255,255,255,0.5)",fontFamily:"monospace",whiteSpace:"nowrap"}}>{fmtP(item.peso)}</td>
+                  <td style={{padding:"7px 10px"}}>
+                    <input type="number" min="0" max="10" step="0.1" value={item.nota??""} placeholder="—"
+                      onChange={e=>{const v=e.target.value===""?null:parseFloat(e.target.value);updateNota(item.id,isNaN(v)?null:v);}}
+                      style={{width:60,padding:"3px 6px",borderRadius:5,border:"0.5px solid rgba(255,255,255,0.12)",background:"rgba(255,255,255,0.06)",color:"#e8e6ff",fontSize:12,textAlign:"center"}}/>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{marginTop:10,fontSize:11,color:"rgba(255,255,255,0.3)"}}>{filtered.length} atividades</div>
+      </>}
+    </div>}
+  </div>;
+}
+
 // ── EditItemModal ──────────────────────────────────────────────────────────────
 function EditItemModal({open,onClose,item,onSave,subjects}){
   const [title,setTitle]=useState("");
@@ -1005,7 +1311,7 @@ export default function App(){
           📁 Abrir Google Drive
         </a>
         <div style={{padding:"0 8px 6px"}}>
-          {[{id:"subjects",label:"📚 Matérias"},{id:"calendar",label:"📅 Calendário",badge:upcomingCount}].map(nav=>(
+          {[{id:"subjects",label:"📚 Matérias"},{id:"calendar",label:"📅 Calendário",badge:upcomingCount},{id:"grades",label:"🎓 Notas"}].map(nav=>(
             <button key={nav.id} onClick={()=>setPage(nav.id)} style={{width:"100%",padding:"8px 10px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",gap:8,background:page===nav.id?"rgba(255,255,255,0.07)":"transparent",border:"none",color:"rgba(255,255,255,0.75)",fontSize:13,fontWeight:page===nav.id?600:400,marginBottom:2,textAlign:"left"}}>
               <span style={{flex:1}}>{nav.label}</span>
               {nav.badge>0&&<span style={{fontSize:10,background:"#7C6AF7",color:"#fff",padding:"1px 6px",borderRadius:10,fontWeight:700}}>{nav.badge}</span>}
@@ -1027,6 +1333,7 @@ export default function App(){
           })}
         </div>}
         {page==="calendar"&&<div style={{flex:1}}/>}
+        {page==="grades"&&<div style={{flex:1}}/>}
 
         <div style={{padding:"10px 10px 12px",borderTop:"0.5px solid rgba(255,255,255,0.06)",display:"flex",flexDirection:"column",gap:6}}>
           <button onClick={()=>modal("saved",true)} style={{width:"100%",padding:"7px 0",borderRadius:8,border:"0.5px solid rgba(255,255,255,0.08)",background:"rgba(255,255,255,0.03)",color:"rgba(255,255,255,0.45)",fontSize:12,cursor:"pointer"}}>💾 Materiais salvos ({savedMaterials.length})</button>
@@ -1037,6 +1344,8 @@ export default function App(){
       {/* Main */}
       {page==="calendar"?(
         <CalendarPage events={calEvents} onAddEvent={addEvent} onDeleteEvent={deleteEvent}/>
+      ):page==="grades"?(
+        <GradesPage/>
       ):(
         <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
           {/* Topbar */}
