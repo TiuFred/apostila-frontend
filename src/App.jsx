@@ -833,8 +833,8 @@ function parseHtml(html){
   }catch{return{items:[],studentName:null};}
 }
 
-function GradesPage(){
-  const STORE_KEY="apostila-grades-state";
+function GradesPage({userId}){
+  const STORE_KEY=`apostila-grades-${userId||"local"}`;
   const loadG=()=>{try{const s=localStorage.getItem(STORE_KEY);return s?JSON.parse(s):null;}catch{return null;}};
   const saveG=(s)=>{try{localStorage.setItem(STORE_KEY,JSON.stringify(s));}catch{}};
 
@@ -1345,7 +1345,7 @@ export default function App(){
       {page==="calendar"?(
         <CalendarPage events={calEvents} onAddEvent={addEvent} onDeleteEvent={deleteEvent}/>
       ):page==="grades"?(
-        <GradesPage/>
+        <GradesPage userId={user?.id}/>
       ):(
         <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
           {/* Topbar */}
